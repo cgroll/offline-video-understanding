@@ -1,0 +1,21 @@
+schema: spec-driven
+
+context: |
+  Purpose: research how far fully local models get in video understanding (search, descriptions, summaries).
+  Hard constraints:
+  - Only local models at inference time (no cloud APIs). Target hardware: one consumer GPU with 8 GB VRAM
+    (RTX 3070 Laptop), 14 GB RAM; models must fit, e.g. via 4-bit quantization.
+  - Pipeline prompts (VLM/LLM) must stay generic: no examples, names, genres or hints derived from a specific video.
+    Video metadata (title) is allowed. Developer-written eval queries are evaluation only, never pipeline input.
+  - Code, specs, docs, prompts and JSON keys are English. Generated texts (descriptions, chapters, summaries) use the
+    per-video output language: user choice, else detected from the transcript, else from the title. The transcript
+    always stays in the spoken language.
+  - Every pipeline step is resumable and skips finished work unless forced.
+  - Quality claims need numbers from `ovu eval` (per-second Hit@1/Hit@3/MRR) on the eval sets in eval/.
+
+rules:
+  proposal:
+    - State the expected effect on eval metrics and how it will be measured
+    - State VRAM/runtime impact on the 8 GB target
+  tasks:
+    - Include an eval run comparing against the current best variant when retrieval quality is affected

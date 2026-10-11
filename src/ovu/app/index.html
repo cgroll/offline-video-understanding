@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Video Search</title>
+<style>
+:root {
+  --page: #f9f9f7; --surface: #fcfcfb; --surface-2: #f1f0ed; --border: #e2e1dc;
+  --ink: #0b0b0b; --ink-2: #52514e; --ink-3: #8a8983;
+  --accent: #2a78d6; --accent-soft: #cde2fb; --playhead: #e34948; --source: #eb6834;
+  --ramp-lo: #eef3fa; --ramp-hi: #0d366b; --empty: #ecebe7;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #0d0d0d; --surface: #1a1a19; --surface-2: #232321; --border: #33332f;
+    --ink: #f0efec; --ink-2: #c3c2b7; --ink-3: #8a8983;
+    --accent: #3987e5; --accent-soft: #184f95; --playhead: #e66767; --source: #d95926;
+    --ramp-lo: #1d232c; --ramp-hi: #cde2fb; --empty: #232321;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #0d0d0d; --surface: #1a1a19; --surface-2: #232321; --border: #33332f;
+  --ink: #f0efec; --ink-2: #c3c2b7; --ink-3: #8a8983;
+  --accent: #3987e5; --accent-soft: #184f95; --playhead: #e66767; --source: #d95926;
+  --ramp-lo: #1d232c; --ramp-hi: #cde2fb; --empty: #232321;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-variant-numeric: tabular-nums; }
+header { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--surface); position: sticky; top: 0; z-index: 5; }
+header h1 { font-size: 16px; margin: 0; white-space: nowrap; }
+header h1 small { font-weight: 400; color: var(--ink-3); margin-left: 8px; }
+form { display: flex; gap: 8px; flex: 1; min-width: 280px; max-width: 720px; }
+input[type=search] { flex: 1; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--page); color: var(--ink); font: inherit; }
+input[type=search]:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+button { font: inherit; padding: 7px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--ink); cursor: pointer; }
+button:hover { border-color: var(--ink-3); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { padding: 3px 10px; border-radius: 999px; font-size: 12px; color: var(--ink-2); }
+main { padding: 16px 20px 40px; display: grid; gap: 16px; max-width: 1600px; margin: 0 auto; }
+.top { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: 16px; height: min(58vh, 620px); }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.player { display: flex; flex-direction: column; }
+video { width: 100%; flex: 1; min-height: 0; background: #000; display: block; }
+.player-bar { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-top: 1px solid var(--border); }
+.player-bar .time { font-size: 13px; color: var(--ink-2); }
+.player-bar .spacer { flex: 1; }
+.status { font-size: 13px; color: var(--ink-2); }
+.status b { color: var(--ink); font-weight: 600; }
+.transcript { display: flex; flex-direction: column; }
+.panel h2 { font-size: 13px; font-weight: 600; margin: 0; padding: 10px 14px; border-bottom: 1px solid var(--border); color: var(--ink-2); display: flex; justify-content: space-between; gap: 8px; }
+.panel h2 span { font-weight: 400; color: var(--ink-3); }
+.segs { overflow-y: auto; flex: 1; padding: 4px 0; }
+.seg { display: grid; grid-template-columns: 6px 44px 1fr; gap: 10px; padding: 6px 14px 6px 8px; cursor: pointer; align-items: start; }
+.seg:hover { background: var(--surface-2); }
+.seg.current { background: var(--surface-2); }
+.seg.current .t { color: var(--playhead); }
+.seg .bar { width: 6px; align-self: stretch; border-radius: 3px; background: transparent; }
+.seg .t { color: var(--ink-3); font-size: 12px; padding-top: 1px; }
+.seg .x { color: var(--ink); }
+.seg .x small { display: block; color: var(--ink-3); font-size: 12px; margin-top: 2px; }
+.seg .x .badge { display: inline-block; font-size: 11px; color: var(--ink-2); border: 1px solid var(--border); border-radius: 999px; padding: 0 6px; margin-right: 6px; }
+.tabs { display: inline-flex; gap: 4px; }
+.tabs button { padding: 2px 10px; font-size: 12px; border-radius: 999px; background: transparent; color: var(--ink-2); }
+.tabs button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.summary { padding: 10px 14px 12px; border-bottom: 1px solid var(--border); font-size: 13px; color: var(--ink); }
+.summary small { display: block; color: var(--ink-3); margin-top: 6px; }
+.tip .ch { font-weight: 600; color: var(--ink); margin-top: 6px; }
+.tip .cap { color: var(--ink); margin-top: 6px; border-top: 1px solid var(--border); padding-top: 6px; }
+.hit .meta .cap { color: var(--ink); font-size: 12px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.seg .x mark { background: var(--accent-soft); color: inherit; border-radius: 3px; padding: 0 2px; }
+.timeline-head { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+.timeline-head .label { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.seg-ctrl { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.seg-ctrl button { border: 0; border-radius: 0; padding: 4px 10px; font-size: 12px; background: transparent; color: var(--ink-2); }
+.seg-ctrl button + button { border-left: 1px solid var(--border); }
+.seg-ctrl button.on { background: var(--accent); color: #fff; }
+.ramp { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-3); margin-left: auto; }
+.ramp i { width: 90px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--ramp-lo), var(--ramp-hi)); display: block; }
+.canvas-wrap { position: relative; padding: 8px 0 4px; }
+canvas { display: block; width: 100%; cursor: crosshair; }
+.tip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,.18); padding: 8px; font-size: 12px; width: 230px; display: none; z-index: 3; }
+.tip img { width: 100%; border-radius: 6px; display: block; margin-bottom: 6px; background: #000; aspect-ratio: 16/9; }
+.tip .row { display: flex; justify-content: space-between; gap: 8px; color: var(--ink-2); }
+.tip .row.sel { color: var(--ink); font-weight: 600; }
+.tip .head { font-weight: 600; margin-bottom: 4px; }
+.tip .snip { color: var(--ink-2); margin-top: 6px; border-top: 1px solid var(--border); padding-top: 6px; }
+.hits { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; padding: 14px; }
+.hit { background: var(--page); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; cursor: pointer; display: flex; flex-direction: column; }
+.hit:hover { border-color: var(--accent); }
+.hit .img { position: relative; }
+.hit img { width: 100%; display: block; aspect-ratio: 16/9; object-fit: cover; background: #000; }
+.hit .rank { position: absolute; top: 6px; left: 6px; background: rgba(0,0,0,.7); color: #fff; font-size: 12px; font-weight: 600; border-radius: 6px; padding: 1px 7px; }
+.hit .sim { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,.7); color: #fff; font-size: 11px; border-radius: 6px; padding: 1px 6px; }
+.hit .meta { padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
+.hit .meta .line { display: flex; justify-content: space-between; align-items: center; }
+.hit .meta .tm { font-weight: 600; }
+.hit .meta .snip { color: var(--ink-2); font-size: 12px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.hit .meta button { padding: 2px 8px; font-size: 12px; }
+.empty { padding: 28px; color: var(--ink-3); text-align: center; }
+@media (max-width: 900px) {
+  .top { grid-template-columns: 1fr; height: auto; }
+  video { aspect-ratio: 16/9; flex: none; }
+  .transcript { height: 320px; }
+  main { padding: 12px 16px 32px; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Video search <small id="vtitle"></small></h1>
+  <form id="qform">
+    <input type="search" id="q" placeholder="What are you looking for in the video?" autocomplete="off">
+    <button class="primary" type="submit">Search</button>
+  </form>
+  <div class="chips" id="examples"></div>
+</header>
+
+<main>
+  <section class="top">
+    <div class="panel player">
+      <video id="video" src="/video" controls preload="auto"></video>
+      <div class="player-bar">
+        <span class="time mono" id="ptime">0:00</span>
+        <span class="status" id="status">Enter a query or pick a frame.</span>
+        <span class="spacer"></span>
+        <button id="simbtn" title="Find moments similar to the current frame (key S)">≈ Similar to <span class="mono" id="simt">0:00</span></button>
+      </div>
+    </div>
+    <div class="panel transcript">
+      <h2><span class="tabs" id="tabs"><button type="button" data-tab="speech">Speech</button><button type="button" data-tab="scenes">Scenes (VLM)</button><button type="button" data-tab="chapters">Chapters</button></span><span id="seginfo">click to jump</span></h2>
+      <div class="segs" id="segs"></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="timeline-head">
+      <span class="label">Similarity over time</span>
+      <span class="seg-ctrl" id="varctrl" role="group" aria-label="Variant for curve and top hits"></span>
+      <span class="ramp" title="Colour scaled per row (row min → max)">low <i></i> high</span>
+    </div>
+    <div class="canvas-wrap" id="cwrap">
+      <canvas id="tl"></canvas>
+      <div class="tip" id="tip"></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2 id="hitshead">Top hits <span></span></h2>
+    <div class="hits" id="hits"><div class="empty">No search yet.</div></div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const video = $("video"), canvas = $("tl"), ctx = canvas.getContext("2d"), tip = $("tip");
+const K_HITS = 8;
+// min. distance between hits: window variants are smooth over 20 s, so their peaks need more spacing
+const nmsFor = v => (v.includes("frame") || v === "video_shots") ? 6 : 15;
+
+let meta = null, scores = null, mode = null;  // mode: {kind:"query", q} | {kind:"similar", t}
+let selVar = "text+frame", hover = null, panelTab = "speech";
+const thumbs = new Map();
+
+const fmt = s => { s = Math.max(0, Math.floor(s)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const thumbUrl = t => `/thumbs/${String(t).padStart(4, "0")}.jpg`;
+function thumb(t) {
+  if (!thumbs.has(t)) { const im = new Image(); im.onload = draw; im.src = thumbUrl(t); thumbs.set(t, im); }
+  return thumbs.get(t);
+}
+function segAt(t) {
+  let best = null, dist = Infinity;
+  for (const s of meta.segments) {
+    const d = t < s.start ? s.start - t : t > s.end ? t - s.end : 0;
+    if (d < dist) { dist = d; best = s; }
+  }
+  return dist <= 3 ? best : null;
+}
+
+// ---------- data ----------
+async function init() {
+  meta = await (await fetch("/api/meta")).json();
+  $("vtitle").textContent = meta.title;
+  document.title = "Video Search";
+  if (!meta.variants.some(v => v.id === selVar)) selVar = meta.variants[0].id;
+  for (const e of meta.examples) {
+    const b = document.createElement("button"); b.type = "button"; b.className = "chip"; b.textContent = e;
+    b.onclick = () => { $("q").value = e; runQuery(e); };
+    $("examples").append(b);
+  }
+  if (!meta.segments.some(s => s.text)) {
+    panelTab = "scenes";
+    selVar = meta.variants.some(v => v.id === "caption_ctx+frame") ? "caption_ctx+frame" : "caption+frame";
+  }
+  if (!meta.captions.length) $("tabs").querySelector('[data-tab="scenes"]').style.display = "none";
+  if (!meta.chapters.length) $("tabs").querySelector('[data-tab="chapters"]').style.display = "none";
+  if (!meta.variants.some(v => v.id === selVar)) selVar = meta.variants[0].id;
+  $("tabs").querySelectorAll("button").forEach(b => b.onclick = () => { panelTab = b.dataset.tab; lastSeg = null; renderSegs(); onTime(); });
+  renderVarCtrl(); renderSegs(); resize();
+}
+
+async function runQuery(q) {
+  q = q.trim(); if (!q) return;
+  $("status").innerHTML = "Searching …";
+  const r = await (await fetch("/api/query?q=" + encodeURIComponent(q))).json();
+  scores = r.scores; mode = { kind: "query", q };
+  $("status").innerHTML = `Textsuche: <b>${escapeHtml(q)}</b>`;
+  afterScores();
+}
+
+async function runSimilar(t) {
+  t = Math.min(meta.n_seconds - 1, Math.max(0, Math.floor(t)));
+  const r = await (await fetch("/api/similar?t=" + t)).json();
+  scores = r.scores; mode = { kind: "similar", t };
+  $("status").innerHTML = `Similar to the frame at <b class="mono">${fmt(t)}</b>`;
+  if (!scores[selVar]) selVar = "video_shots" in scores ? "video_shots" : "frame";
+  afterScores();
+}
+
+function afterScores() { renderVarCtrl(); renderSegs(); renderHits(); draw(); }
+
+const escapeHtml = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+// ---------- scaling ----------
+// robust per-row range; in similar-mode the source frame's own neighborhood is excluded so it doesn't flatten the row
+function rowRange(arr, isText) {
+  const vals = arr.filter((v, i) => !(isText && v === 0) && !(mode && mode.kind === "similar" && Math.abs(i - mode.t) < 3));
+  if (!vals.length) return [0, 1];
+  const s = [...vals].sort((a, b) => a - b);
+  return [s[Math.floor(s.length * 0.02)], s[s.length - 1]];
+}
+function peaks(arr) {
+  const NMS_S = nmsFor(selVar);
+  const order = arr.map((v, i) => i).sort((a, b) => arr[b] - arr[a]);
+  const out = [];
+  for (const i of order) {
+    if (mode.kind === "similar" && Math.abs(i - mode.t) < NMS_S) continue;
+    if (out.every(j => Math.abs(i - j) >= NMS_S)) out.push(i);
+    if (out.length === K_HITS) break;
+  }
+  return out;
+}
+function lerpColor(a, b, t) {
+  const p = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  const [x, y] = [p(a), p(b)];
+  return `rgb(${x.map((v, i) => Math.round(v + (y[i] - v) * t)).join(",")})`;
+}
+
+// ---------- UI pieces ----------
+function renderVarCtrl() {
+  const c = $("varctrl"); c.innerHTML = "";
+  for (const v of meta.variants) {
+    const b = document.createElement("button");
+    b.textContent = v.label.replace(/ \(.*\)/, ""); b.title = v.label;
+    b.className = v.id === selVar ? "on" : "";
+    b.disabled = scores && !scores[v.id];
+    b.style.opacity = b.disabled ? .4 : 1;
+    b.onclick = () => { selVar = v.id; renderVarCtrl(); renderHits(); draw(); };
+    c.append(b);
+  }
+}
+
+// right panel: spoken transcript or VLM scene descriptions; the bar shows the query score of the matching variant
+function renderSegs() {
+  const box = $("segs"); box.innerHTML = "";
+  $("tabs").querySelectorAll("button").forEach(b => b.className = b.dataset.tab === panelTab ? "on" : "");
+  const scenes = panelTab === "scenes", chapters = panelTab === "chapters";
+  const key = chapters ? "chapter" : scenes ? (scores && scores.caption_ctx ? "caption_ctx" : "caption") : "text";
+  const row = scores && mode.kind === "query" && scores[key], rng = row && rowRange(row, key === "text");
+  const lo = css("--ramp-lo"), hi = css("--ramp-hi");
+  const items = chapters ? meta.chapters : scenes ? meta.captions : meta.segments;
+  if (!scenes && !chapters && !items.some(s => s.text)) { box.innerHTML = '<div class="empty">No speech detected.</div>'; return; }
+  if (chapters && meta.summary.plot) {
+    const sm = document.createElement("div"); sm.className = "summary";
+    sm.innerHTML = `${escapeHtml(meta.summary.plot)}${(meta.summary.themes || []).length ? `<small>Themes: ${escapeHtml(meta.summary.themes.join(", "))}</small>` : ""}`;
+    box.append(sm);
+  }
+  items.forEach((s, i) => {
+    if (!scenes && !chapters && !s.text) return;
+    const d = document.createElement("div"); d.className = "seg"; d.dataset.i = i;
+    let barColor = "transparent";
+    if (row) {
+      const a = Math.floor(s.start), b = Math.max(a + 1, Math.ceil(s.end));
+      const v = Math.max(...row.slice(a, b));
+      barColor = lerpColor(lo, hi, Math.min(1, Math.max(0, (v - rng[0]) / (rng[1] - rng[0] || 1))));
+    }
+    const body = chapters
+      ? `<b>${highlight(s.title)}</b><small>${highlight(s.summary)}</small>`
+      : scenes
+      ? `<span class="badge">${escapeHtml(s.shot_type || "scene")}</span>${highlight(s.description)}${s.on_screen_text ? `<small>On-screen text: “${highlight(s.on_screen_text)}”</small>` : ""}`
+      : highlight(s.text);
+    d.innerHTML = `<span class="bar" style="background:${barColor}"></span><span class="t mono">${fmt(s.start)}</span><span class="x">${body}</span>`;
+    d.onclick = () => seek(s.start);
+    box.append(d);
+  });
+}
+function capAt(t) { return meta.captions.find(c => c.start <= t && t < c.end) || null; }
+function chAt(t) { return meta.chapters.find(c => c.start <= t && t < c.end) || null; }
+function highlight(text) {
+  let h = escapeHtml(text);
+  if (mode && mode.kind === "query") {
+    const words = mode.q.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(w => w.length > 3);
+    for (const w of words) h = h.replace(new RegExp(`(${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "giu"), "<mark>$1</mark>");
+  }
+  return h;
+}
+
+function renderHits() {
+  const box = $("hits"); box.innerHTML = "";
+  const arr = scores && scores[selVar];
+  const label = meta.variants.find(v => v.id === selVar).label;
+  $("hitshead").querySelector("span").textContent = arr ? `by ${label}` : "";
+  if (!arr) { box.innerHTML = '<div class="empty">No search yet.</div>'; return; }
+  peaks(arr).forEach((t, k) => {
+    const seg = segAt(t + 0.5), cap = capAt(t + 0.5);
+    const d = document.createElement("div"); d.className = "hit";
+    d.innerHTML = `<div class="img"><img loading="lazy" src="${thumbUrl(t)}" alt="Frame at ${fmt(t)}"><span class="rank">${k + 1}</span><span class="sim mono">${arr[t].toFixed(3)}</span></div>
+      <div class="meta"><div class="line"><span class="tm mono">${fmt(t)}</span><button type="button" title="Moments similar to this frame">≈ similar</button></div>
+      ${cap ? `<div class="cap">${escapeHtml(cap.description)}</div>` : ""}
+      <div class="snip">${seg ? "“" + escapeHtml(seg.text) + "”" : '<i style="color:var(--ink-3)">no speech</i>'}</div></div>`;
+    d.onclick = () => seek(t);
+    d.querySelector("button").onclick = ev => { ev.stopPropagation(); seek(t); runSimilar(t); };
+    box.append(d);
+  });
+}
+
+function seek(t) { video.currentTime = t + 0.01; video.pause(); }
+
+// ---------- timeline canvas ----------
+const L = 190, R = 14, CH_H = 26, STRIP_H = 50, CHART_H = 120, ROW_H = 22, ROW_GAP = 4, AXIS_H = 22, GAP = 12;
+let W = 0, H = 0, rowsY = 0, chartY = 0, stripY = 0;
+function layout() {
+  const nRows = meta.variants.length;
+  stripY = meta.chapters.length ? CH_H + 6 : 0;
+  chartY = stripY + STRIP_H + GAP;
+  rowsY = chartY + CHART_H + GAP;
+  H = rowsY + nRows * (ROW_H + ROW_GAP) + AXIS_H;
+}
+function resize() {
+  layout();
+  W = $("cwrap").clientWidth;
+  const dpr = devicePixelRatio || 1;
+  canvas.width = W * dpr; canvas.height = H * dpr; canvas.style.height = H + "px";
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  draw();
+}
+const xOf = t => L + (t / meta.n_seconds) * (W - L - R);
+const tOf = x => Math.min(meta.n_seconds - 1, Math.max(0, Math.floor((x - L) / (W - L - R) * meta.n_seconds)));
+
+function draw() {
+  if (!meta || !W) return;
+  const ink2 = css("--ink-2"), ink3 = css("--ink-3"), border = css("--border"), surface = css("--surface");
+  const lo = css("--ramp-lo"), hi = css("--ramp-hi"), accent = css("--accent"), empty = css("--empty");
+  const pw = W - L - R, n = meta.n_seconds, sw = pw / n;
+  ctx.clearRect(0, 0, W, H);
+  ctx.font = "12px system-ui, sans-serif"; ctx.textBaseline = "middle";
+
+  // chapter track: one block per chapter with its title; the chapter under the playhead is outlined
+  if (meta.chapters.length) {
+    ctx.fillStyle = ink2; ctx.textAlign = "left"; ctx.fillText("Chapters", 14, CH_H / 2);
+    const curCh = chAt(video.currentTime);
+    meta.chapters.forEach((c, i) => {
+      const x0 = xOf(c.start), x1 = xOf(c.end);
+      ctx.fillStyle = i % 2 ? css("--surface-2") : empty; ctx.fillRect(x0, 0, x1 - x0 - 2, CH_H);
+      if (c === curCh) { ctx.strokeStyle = accent; ctx.lineWidth = 2; ctx.strokeRect(x0 + 1, 1, x1 - x0 - 4, CH_H - 2); }
+      ctx.save(); ctx.beginPath(); ctx.rect(x0 + 4, 0, x1 - x0 - 10, CH_H); ctx.clip();
+      ctx.fillStyle = css("--ink"); ctx.font = "11px system-ui, sans-serif"; ctx.fillText(c.title, x0 + 6, CH_H / 2);
+      ctx.restore();
+    });
+    ctx.font = "12px system-ui, sans-serif";
+  }
+
+  // filmstrip
+  const tw = STRIP_H * 16 / 9, nt = Math.max(1, Math.floor(pw / tw));
+  ctx.fillStyle = ink2; ctx.textAlign = "left";
+  ctx.fillText("Filmstrip", 14, stripY + STRIP_H / 2);
+  for (let i = 0; i < nt; i++) {
+    const x = L + i * pw / nt, t = Math.floor((i + 0.5) / nt * n), im = thumb(t);
+    if (im.complete && im.naturalWidth) ctx.drawImage(im, x, stripY, pw / nt - 1, STRIP_H);
+    else { ctx.fillStyle = empty; ctx.fillRect(x, stripY, pw / nt - 1, STRIP_H); }
+  }
+
+  // scene boundaries (video_shots) as ticks under the filmstrip
+  ctx.fillStyle = css("--ink");
+  for (const b of meta.shots) if (b > 0) ctx.fillRect(xOf(b) - .5, stripY + STRIP_H - 10, 1.5, 10);
+
+  // main chart (selected variant)
+  const arr = scores && scores[selVar];
+  ctx.strokeStyle = border; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(L, chartY + CHART_H + .5); ctx.lineTo(W - R, chartY + CHART_H + .5); ctx.stroke();
+  ctx.fillStyle = ink2; ctx.textAlign = "left";
+  const selLabel = meta.variants.find(v => v.id === selVar).label;
+  ctx.fillText(selLabel.replace(/ \(.*\)/, ""), 14, chartY + 12);
+  if (arr) {
+    const isText = selVar === "text";
+    const [a, b] = rowRange(arr, isText), pad = (b - a) * .08 || .01;
+    const ymin = a - pad, ymax = b + pad, yOf = v => chartY + CHART_H - (v - ymin) / (ymax - ymin) * CHART_H;
+    ctx.fillStyle = ink3; ctx.font = "11px ui-monospace, monospace";
+    ctx.fillText(`max ${b.toFixed(3)}`, 14, chartY + 32); ctx.fillText(`min ${a.toFixed(3)}`, 14, chartY + CHART_H - 8);
+    ctx.font = "12px system-ui, sans-serif";
+    ctx.save(); ctx.beginPath(); ctx.rect(L, chartY, pw, CHART_H); ctx.clip();
+    const pts = arr.map((v, i) => [xOf(i + .5), yOf(Math.max(v, ymin))]);
+    ctx.beginPath(); ctx.moveTo(pts[0][0], chartY + CHART_H);
+    pts.forEach(([x, y]) => ctx.lineTo(x, y)); ctx.lineTo(pts.at(-1)[0], chartY + CHART_H); ctx.closePath();
+    ctx.globalAlpha = .18; ctx.fillStyle = accent; ctx.fill(); ctx.globalAlpha = 1;
+    ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+    ctx.strokeStyle = accent; ctx.lineWidth = 2; ctx.lineJoin = "round"; ctx.stroke();
+    ctx.restore();
+    // numbered peaks
+    peaks(arr).forEach((t, k) => {
+      const x = xOf(t + .5), y = Math.max(chartY + 9, yOf(arr[t]));
+      ctx.beginPath(); ctx.arc(x, y, 8, 0, 7); ctx.fillStyle = accent; ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = surface; ctx.stroke();
+      ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.font = "600 10px system-ui, sans-serif";
+      ctx.fillText(k + 1, x, y + .5); ctx.font = "12px system-ui, sans-serif";
+    });
+    if (mode.kind === "similar") marker(mode.t, chartY, CHART_H);
+  } else {
+    ctx.fillStyle = ink3; ctx.textAlign = "center";
+    ctx.fillText("Search to see the similarity per second", L + pw / 2, chartY + CHART_H / 2);
+  }
+
+  // heatmap rows
+  meta.variants.forEach((v, r) => {
+    const y = rowsY + r * (ROW_H + ROW_GAP), row = scores && scores[v.id];
+    ctx.textAlign = "left"; ctx.fillStyle = v.id === selVar ? css("--ink") : ink2;
+    ctx.font = (v.id === selVar ? "600 " : "") + "12px system-ui, sans-serif";
+    ctx.fillText(v.label.replace(/ \((20 s window|per second|fusion)\)/, ""), 14, y + ROW_H / 2);
+    ctx.font = "12px system-ui, sans-serif";
+    if (!row) { ctx.fillStyle = empty; ctx.fillRect(L, y, pw, ROW_H); return; }
+    const isText = v.id === "text", [a, b] = rowRange(row, isText);
+    for (let i = 0; i < n; i++) {
+      ctx.fillStyle = isText && row[i] === 0 ? empty : lerpColor(lo, hi, Math.min(1, Math.max(0, (row[i] - a) / (b - a || 1))));
+      ctx.fillRect(L + i * sw, y, Math.ceil(sw), ROW_H);
+    }
+    if (v.id === "video_shots") { ctx.fillStyle = surface; for (const b of meta.shots) if (b > 0) ctx.fillRect(xOf(b) - 1, y, 2, ROW_H); }
+    if (v.id === selVar) { ctx.strokeStyle = accent; ctx.lineWidth = 2; ctx.strokeRect(L - 1, y - 1, pw + 2, ROW_H + 2); }
+  });
+  if (mode && mode.kind === "similar") marker(mode.t, rowsY, meta.variants.length * (ROW_H + ROW_GAP) - ROW_GAP);
+
+  // time axis
+  const ay = H - AXIS_H / 2; ctx.fillStyle = ink3; ctx.textAlign = "center"; ctx.font = "11px ui-monospace, monospace";
+  for (let t = 0; t <= n; t += 30) ctx.fillText(fmt(t), Math.min(xOf(t), W - R - 14), ay);
+  ctx.font = "12px system-ui, sans-serif";
+
+  // hover crosshair + playhead
+  if (hover != null) { ctx.strokeStyle = ink3; ctx.lineWidth = 1; ctx.setLineDash([3, 3]); vline(xOf(hover + .5)); ctx.setLineDash([]); }
+  ctx.strokeStyle = css("--playhead"); ctx.lineWidth = 2; vline(xOf(video.currentTime));
+}
+function vline(x) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H - AXIS_H); ctx.stroke(); }
+function marker(t, y, h) {
+  ctx.strokeStyle = css("--source"); ctx.lineWidth = 2;
+  ctx.strokeRect(xOf(t) - 1, y - 1, Math.max(3, xOf(t + 1) - xOf(t)) + 2, h + 2);
+}
+
+canvas.addEventListener("mousemove", e => {
+  const r = canvas.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  if (x < L || x > W - R) { hideTip(); return; }
+  hover = tOf(x); draw(); showTip(hover, x, y);
+});
+canvas.addEventListener("mouseleave", hideTip);
+canvas.addEventListener("click", e => {
+  const r = canvas.getBoundingClientRect(), x = e.clientX - r.left;
+  if (x >= L && x <= W - R) seek(tOf(x));
+});
+function hideTip() { hover = null; tip.style.display = "none"; draw(); }
+function showTip(t, x, y) {
+  const seg = segAt(t + .5), cap = capAt(t + .5), ch = chAt(t + .5);
+  let rows = "";
+  if (scores) for (const v of meta.variants) if (scores[v.id])
+    rows += `<div class="row${v.id === selVar ? " sel" : ""}"><span>${v.label.replace(/ \(.*\)/, "")}</span><span class="mono">${(v.id === "text" && scores.text[t] === 0) ? "–" : scores[v.id][t].toFixed(3)}</span></div>`;
+  tip.innerHTML = `<img src="${thumbUrl(t)}" alt=""><div class="head mono">${fmt(t)}</div>${rows}${ch ? `<div class="ch">Chapter: ${escapeHtml(ch.title)}</div>` : ""}${cap ? `<div class="cap">${escapeHtml(cap.description)}</div>` : ""}${seg ? `<div class="snip">“${escapeHtml(seg.text)}”</div>` : ""}`;
+  tip.style.display = "block";
+  const tw = 230, wrapW = $("cwrap").clientWidth;
+  tip.style.left = Math.min(wrapW - tw - 4, x + 16) + "px";
+  tip.style.top = Math.max(0, y - 120) + "px";
+}
+
+// ---------- playback sync ----------
+let lastSeg = -1;
+function onTime() {
+  const t = video.currentTime;
+  $("ptime").textContent = fmt(t); $("simt").textContent = fmt(t);
+  const list = panelTab === "chapters" ? meta.chapters : panelTab === "scenes" ? meta.captions : meta.segments;
+  const cur = panelTab === "chapters" ? chAt(t) : panelTab === "scenes" ? capAt(t) : segAt(t);
+  const i = cur ? list.indexOf(cur) : -1;
+  if (i !== lastSeg) {
+    document.querySelectorAll(".seg.current").forEach(d => d.classList.remove("current"));
+    const d = document.querySelector(`.seg[data-i="${i}"]`);
+    if (d) { d.classList.add("current"); d.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
+    lastSeg = i;
+  }
+  draw();
+}
+video.addEventListener("timeupdate", onTime);
+video.addEventListener("seeked", onTime);
+(function loop() { if (!video.paused) onTime(); requestAnimationFrame(loop); })();
+
+$("qform").addEventListener("submit", e => { e.preventDefault(); runQuery($("q").value); });
+$("simbtn").onclick = () => runSimilar(video.currentTime);
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT") return;
+  if (e.key === "/") { e.preventDefault(); $("q").focus(); }
+  if (e.key === "s") runSimilar(video.currentTime);
+});
+addEventListener("resize", resize);
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { renderSegs(); draw(); });
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+__pycache__/
+*.py[oc]
+.venv/
+
+# videos, results and anything describing video content
+data/
+eval/*.json
+_import/
+*.mp4
+*.mkv
+*.webm
+*.mov
