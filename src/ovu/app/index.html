@@ -28,7 +28,7 @@
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
 .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-variant-numeric: tabular-nums; }
-header { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--surface); position: sticky; top: 0; z-index: 5; }
+header { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding: 12px var(--gutter); border-bottom: 1px solid var(--border); background: var(--surface); position: sticky; top: 0; z-index: 5; }
 header h1 { font-size: 16px; margin: 0; white-space: nowrap; }
 header h1 small { font-weight: 400; color: var(--ink-3); margin-left: 8px; }
 form { display: flex; gap: 8px; flex: 1; min-width: 280px; max-width: 720px; }
@@ -39,6 +39,8 @@ button:hover { border-color: var(--ink-3); }
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .chips { display: flex; gap: 6px; flex-wrap: wrap; }
 .chip { padding: 3px 10px; border-radius: 999px; font-size: 12px; color: var(--ink-2); }
+/* header content lines up with the centered main column (max 1600 px) on wide screens */
+:root { --gutter: max(20px, calc((100% - 1600px) / 2 + 20px)); }
 main { padding: 16px 20px 40px; display: grid; gap: 16px; max-width: 1600px; margin: 0 auto; }
 .top { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: 16px; height: min(58vh, 620px); }
 .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
@@ -106,6 +108,7 @@ canvas { display: block; width: 100%; cursor: crosshair; }
   video { aspect-ratio: 16/9; flex: none; }
   .transcript { height: 320px; }
   main { padding: 12px 16px 32px; }
+  :root { --gutter: 16px; }
 }
 </style>
 </head>
