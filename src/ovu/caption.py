@@ -23,7 +23,7 @@ import numpy as np
 
 from ovu import language
 from ovu.media import load_frames
-from ovu.paths import out_dir
+from ovu.paths import out_dir, title
 from ovu.vlm import as_text, generate, load_json, load_vlm
 
 W, H = 960, 540
@@ -113,6 +113,7 @@ def run(video: Path, context: bool = False, force: bool = False, vlm=None, lang:
     from PIL import Image
     from tqdm import tqdm
 
+    lang = language.name(language.output_language(video, lang))  # may delete stale texts, so resolve first
     d = out_dir(video)
     emb = np.load(d / "embeddings.npz")
     segs = list(zip(emb["shot_starts"].tolist(), emb["shot_ends"].tolist()))
@@ -122,7 +123,6 @@ def run(video: Path, context: bool = False, force: bool = False, vlm=None, lang:
         print(f"{path.name}: all {len(segs)} scenes done (use --force)")
         return
 
-    lang = language.name(language.output_language(video, lang))
     frames = load_frames(video) if context else load_frames(video, W, H)
     model, processor = vlm or load_vlm()
     t0, captions = time.time(), []
@@ -130,7 +130,7 @@ def run(video: Path, context: bool = False, force: bool = False, vlm=None, lang:
     if context:
         spath = d / "summary.json"
         if force or not spath.exists():
-            spath.write_text(summarize(model, processor, frames, video.stem, lang))
+            spath.write_text(summarize(model, processor, frames, title(video), lang))
             print(f"summary in {time.time() - t0:.0f}s -> {spath}")
         summary = spath.read_text().strip()
     previous = ""

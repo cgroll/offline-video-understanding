@@ -1,7 +1,9 @@
 # Pipeline
 
-How a video becomes searchable, which local model does what, and in which order. All results of a video are in
-`data/processed/<slug>/`. `ovu process` runs the steps in the order below.
+How a video becomes searchable, which local model does what, and in which order. A video lives in a project
+directory `data/projects/<name>/` (created with `ovu new`), together with `project.json` and all results.
+`ovu process` runs the steps in the order below; steps 5-8 and 10 (output language, scene descriptions,
+chapters, report) need the vision-language model and run only with `--vlm`.
 
 ## Models
 
@@ -12,29 +14,38 @@ How a video becomes searchable, which local model does what, and in which order.
 | [Qwen3-VL-4B-Instruct](https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct) | 4-bit nf4 (bitsandbytes), ~3.5-4.5 GB VRAM | GPU | scene descriptions, global summary, chapters (vision and text-only) |
 | [lingua](https://github.com/pemistahl/lingua-py) | rule/statistics based | CPU | detecting the output language |
 | ffmpeg | | CPU | decoding audio (16 kHz mono) and frames (1 fps), hard-cut detection, thumbnails |
+| reportlab | | CPU | PDF report |
 
 ## Steps
 
-1. **Download** (`ovu download`, optional): yt-dlp saves the video as MP4 (≤ 1080p) in `data/videos/`.
+1. **Project** (`ovu new <name> <file|url>`): the video is copied, or downloaded with yt-dlp as MP4 (≤ 1080p), into
+   the project directory; `project.json` records file name and title.
 2. **Transcribe** (Parakeet + VAD) → `transcript.json`: speech segments and word timestamps in the spoken language.
 3. **Frame embeddings** (EmbeddingGemma 2): one image per second → variant `frame`.
 4. **Content segments**: boundaries at hard cuts (ffmpeg scene score > 0.3) and where the frame-embedding similarity
    to the previous second drops below 0.85; segments are 2-10 s. Each segment is embedded as a video clip →
    `video_shots`.
-5. **Output language** → `meta.json`: user choice (`--language`), else detected from the transcript (≥ 20 words),
-   else from the title, else English. Used by all generated texts; the transcript is never translated.
+5. **Output language** → `project.json`: user choice (`--language`), else detected from the transcript (≥ 20 words),
+   else from the title, else English. Used by all generated texts; the transcript is never translated. Choosing a
+   different language deletes the generated texts so they are regenerated.
 6. **Scene descriptions, plain** (Qwen3-VL) → `captions.json`: per segment, 3 frames (start, middle, end) → JSON with
    `description`, `on_screen_text`, `shot_type`, `keywords`.
 7. **Scene descriptions with context** (Qwen3-VL) → `summary.json`, `captions_ctx.json`:
    a global summary from a 40-frame storyboard plus the title (characters with fixed labels, recurring objects,
    places, plot); then per segment all frames as video input plus the global summary and the previous description.
    Near-black/uniform segments are described without context, so the model cannot fill them with the story.
-8. **Chapters** (Qwen3-VL, text only) → `chapters.json`: the context descriptions are grouped into 6-20 contiguous
-   chapters with title and summary, then an overall summary (plot, characters, themes) is written from the chapters.
+8. **Chapters** (Qwen3-VL, text only) → `chapters.json`: from the context descriptions, first only chapter starts
+   with short titles; chapters longer than max(120 s, 1/8 of the video) are split by asking again with only their
+   own scenes; chapters under 20 s are merged (at most 20). Then one call per chapter writes its title and summary,
+   and a last call the overall summary (plot, characters, themes) from the chapters.
 9. **Remaining embeddings** (EmbeddingGemma 2) → `embeddings.npz`:
    - 20 s windows, 10 s stride: `text` (transcript), `video`, `audio`, `video_audio`, `text_video`
    - per segment: `caption`, `caption_ctx` (descriptions embedded as text)
    - per chapter: `chapter`
+10. **Report** → `report.pdf`: title page with plot, characters and themes, then one entry per chapter with number,
+    time range, title, summary and one representative frame: the non-black frame in the chapter whose image embedding
+    is closest to the chapter's text embedding (EmbeddingGemma 2 is cross-modal, so this picks the picture that best
+    shows what the summary says).
 
 ## Search
 

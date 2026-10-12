@@ -7,21 +7,24 @@ GUI) first; behaviour is specified in `openspec/specs/<capability>/spec.md`.
 
 | Path | What |
 |---|---|
-| `src/ovu/cli.py` | `ovu` command; `process` orchestrates all steps |
-| `src/ovu/paths.py` | layout: `data/videos/`, `data/processed/<slug>/`, `eval/<slug>.json`; `resolve_video` |
+| `src/ovu/cli.py` | `ovu` command; `new` creates projects, `process` orchestrates all steps |
+| `src/ovu/paths.py` | layout: `data/projects/<name>/` (video, `project.json`, results); `resolve_video`, `title` |
+| `src/ovu/download.py` | yt-dlp into a project directory |
 | `src/ovu/media.py` | ffmpeg: audio, 1 fps frames, hard cuts, thumbnails |
 | `src/ovu/segments.py` | windows, content segments (`shots`), `spans`, `to_seconds` (unit → per-second scores) |
 | `src/ovu/embedder.py`, `vlm.py` | model loading: EmbeddingGemma 2, Qwen3-VL-4B (4-bit); `vlm.generate` |
 | `src/ovu/transcribe.py`, `embed.py`, `caption.py`, `chapters.py` | pipeline steps, each with `run(video, ..., force)` |
-| `src/ovu/language.py` | output language (user > `meta.json` > transcript > title > English) |
+| `src/ovu/language.py` | output language (user > `project.json` > transcript > title > English); invalidation |
+| `src/ovu/report.py` | PDF report: representative frame, time range, summary per chapter |
 | `src/ovu/search.py` | per-second scoring, fusion, peaks, `ovu search`, `ovu eval` |
 | `src/ovu/app/` | GUI: `server.py` (FastAPI) + `index.html` (vanilla JS, canvas timeline) |
 | `openspec/` | `config.yaml` (constraints), `specs/` (current behaviour), `changes/` (proposals) |
-| `eval/` | eval sets per video (git-ignored; format in `eval/README.md`) |
+| `eval/README.md` | format of a project's `eval.json` |
 
-Result files per video: `transcript.json`, `meta.json`, `embeddings.npz` (all variants plus `starts/ends`,
-`shot_starts/shot_ends`, `chapter_starts/chapter_ends`, `scene_cuts`), `captions.json`, `summary.json`,
-`captions_ctx.json`, `chapters.json`, `thumbs/`.
+Files per project (`data/projects/<name>/`): the video, `project.json` (name, video, title, language),
+`transcript.json`, `embeddings.npz` (all variants plus `starts/ends`, `shot_starts/shot_ends`,
+`chapter_starts/chapter_ends`, `scene_cuts`), `captions.json`, `summary.json`, `captions_ctx.json`, `chapters.json`,
+`report.pdf`, `thumbs/`, optional `eval.json`. Pipeline functions take the video path; its parent is the project.
 
 ## Rules
 
@@ -35,7 +38,7 @@ Result files per video: `transcript.json`, `meta.json`, `embeddings.npz` (all va
 - **Never commit** videos, `data/`, eval sets or anything else describing video content.
 - **Specs first** for features: create an OpenSpec change (`/opsx:propose`), implement (`/opsx:apply`), archive
   (`/opsx:archive`). Keep `openspec validate --specs --strict` green.
-- **Measure** retrieval changes with `uv run ovu eval <slug>` and compare with the current best variant; eval sets are
+- **Measure** retrieval changes with `uv run ovu eval <project>` and compare with the current best variant; eval sets are
   small and written after watching the videos, so 1-2 query differences are tendencies, not results.
 - Steps must stay resumable (skip finished work, `--force` recomputes). Long runs (scene descriptions ~7 s per
   segment) go to the background with a log file.
@@ -46,9 +49,11 @@ Result files per video: `transcript.json`, `meta.json`, `embeddings.npz` (all va
 
 ```bash
 uv sync
+uv run ovu new <name> <file|url>
 uv run ovu list
-uv run ovu process <url|video> [--no-vlm] [--language de] [--force]
-uv run ovu eval <video>
-uv run ovu app <video> --port 7860
+uv run ovu process <project> [--vlm] [--language de] [--force]   # --vlm: descriptions, chapters, report
+uv run ovu report <project> [--force]
+uv run ovu eval <project>
+uv run ovu app <project> --port 7860
 openspec validate --specs --strict
 ```

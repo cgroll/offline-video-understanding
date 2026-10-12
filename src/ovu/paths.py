@@ -1,45 +1,69 @@
-"""Project layout: videos in data/videos, results per video in data/processed/<slug>, eval queries in eval/<slug>.json.
+"""Project layout: one directory per video, data/projects/<name>/, holding the video file, project.json, all results,
+the eval set (eval.json) and reports. The data root can be overridden with the OVU_HOME environment variable.
 
-The project root can be overridden with the OVU_HOME environment variable.
+Pipeline steps take the video path; its project directory is the video's parent directory.
 """
 
+import json
 import os
 import re
 from pathlib import Path
 
 ROOT = Path(os.environ.get("OVU_HOME", Path(__file__).resolve().parents[2]))
-VIDEOS = ROOT / "data" / "videos"
-PROCESSED = ROOT / "data" / "processed"
-EVAL = ROOT / "eval"
-VIDEO_EXT = {".mp4", ".mkv", ".webm", ".mov"}
-
-
-def slug(video: Path) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", video.stem.lower()).strip("-")
+PROJECTS = ROOT / "data" / "projects"
+NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 
 def out_dir(video: Path) -> Path:
-    d = PROCESSED / slug(video)
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+    return video.parent
+
+
+def project_name(video: Path) -> str:
+    return video.parent.name
 
 
 def eval_file(video: Path) -> Path:
-    return EVAL / f"{slug(video)}.json"
+    return video.parent / "eval.json"
 
 
-def list_videos() -> list[Path]:
-    return sorted(p for p in VIDEOS.glob("*") if p.suffix.lower() in VIDEO_EXT)
+def load_project(d: Path) -> dict:
+    p = d / "project.json"
+    return json.loads(p.read_text()) if p.exists() else {}
+
+
+def update_project(d: Path, **fields) -> dict:
+    data = load_project(d) | fields
+    (d / "project.json").write_text(json.dumps(data, ensure_ascii=False, indent=1))
+    return data
+
+
+def title(video: Path) -> str:
+    """Title used as metadata in prompts and reports (default: the video file stem)."""
+    return load_project(video.parent).get("title") or video.stem
+
+
+def list_projects() -> list[Path]:
+    return sorted(d for d in PROJECTS.glob("*") if (d / "project.json").exists())
+
+
+def video_of(d: Path) -> Path:
+    return d / load_project(d)["video"]
 
 
 def resolve_video(arg: str) -> Path:
-    """A path to a video file, or a (partial) slug / name of a video in data/videos."""
-    p = Path(arg).expanduser()
-    if p.is_file():
-        return p.resolve()
-    key = slug(Path(arg + ".x"))
-    matches = [v for v in list_videos() if key in slug(v)]
+    """The video of the project named `arg`, or of the only project whose name contains `arg`."""
+    projects = list_projects()
+    matches = [d for d in projects if d.name == arg] or [d for d in projects if arg in d.name]
     if len(matches) == 1:
-        return matches[0]
-    found = "\n  ".join(slug(v) for v in (matches or list_videos())) or "(none)"
-    raise SystemExit(f"{'ambiguous' if matches else 'no'} video for '{arg}'; candidates:\n  {found}")
+        return video_of(matches[0])
+    names = "\n  ".join(d.name for d in (matches or projects)) or "(none, create one with `ovu new`)"
+    raise SystemExit(f"{'ambiguous' if matches else 'no'} project for '{arg}'; projects:\n  {names}")
+
+
+def new_project_dir(name: str) -> Path:
+    if not NAME_RE.match(name):
+        raise SystemExit(f"invalid project name '{name}': use lower-case letters, digits and '-'")
+    d = PROJECTS / name
+    if d.exists():
+        raise SystemExit(f"project '{name}' already exists: {d}")
+    return d

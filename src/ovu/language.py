@@ -1,19 +1,24 @@
-"""Output language of the model-generated texts (scene descriptions, chapters, summaries).
+"""Output language of the model-generated texts (scene descriptions, chapters, summaries, reports).
 
 The transcript always stays in the spoken language. Generated texts use, in this order:
   1. a language given by the user (`--language de` or `--language German`)
-  2. the language stored for the video in meta.json (from an earlier run)
-  3. detected: the language of the transcript if it has enough words, else of the video title, else English
-The choice is stored in meta.json so that all steps of a video use the same language.
+  2. the language stored in the project's project.json (from an earlier run)
+  3. detected: the language of the transcript if it has enough words, else of the project title, else English
+The choice is stored in project.json so that all steps of a project use the same language. Choosing a different
+language explicitly deletes the generated texts (and their embeddings), so no project mixes languages.
 """
 
 import json
 from pathlib import Path
 
-from ovu.paths import out_dir
+import numpy as np
+
+from ovu.paths import load_project, out_dir, title, update_project
 
 MIN_WORDS = 20
 FALLBACK = "en"
+GENERATED_FILES = ["captions.json", "captions_ctx.json", "summary.json", "chapters.json", "report.pdf"]
+GENERATED_EMBEDDINGS = ["caption", "caption_ctx", "chapter", "chapter_starts", "chapter_ends"]
 
 
 def _detector():
@@ -46,7 +51,7 @@ def detect(video: Path) -> tuple[str, str]:
     """(code, source) with source in transcript | title | fallback."""
     t = out_dir(video) / "transcript.json"
     words = [w["word"] for w in json.loads(t.read_text())["words"]] if t.exists() else []
-    candidates = ([("transcript", " ".join(words))] if len(words) >= MIN_WORDS else []) + [("title", video.stem)]
+    candidates = ([("transcript", " ".join(words))] if len(words) >= MIN_WORDS else []) + [("title", title(video))]
     detector = _detector()
     for source, text in candidates:
         lang = detector.detect_language_of(text)
@@ -55,17 +60,33 @@ def detect(video: Path) -> tuple[str, str]:
     return FALLBACK, "fallback"
 
 
+def invalidate_generated(video: Path) -> None:
+    """Delete generated texts, reports and their embeddings (transcript and visual embeddings are kept)."""
+    d = out_dir(video)
+    for f in GENERATED_FILES:
+        (d / f).unlink(missing_ok=True)
+    npz = d / "embeddings.npz"
+    if npz.exists():
+        emb = dict(np.load(npz))
+        if any(k in emb for k in GENERATED_EMBEDDINGS):
+            np.savez(npz, **{k: v for k, v in emb.items() if k not in GENERATED_EMBEDDINGS})
+
+
 def output_language(video: Path, override: str | None = None) -> str:
-    """Language code for generated texts; resolves and stores it in meta.json on first use."""
-    path = out_dir(video) / "meta.json"
-    meta = json.loads(path.read_text()) if path.exists() else {}
+    """Language code for generated texts; resolves and stores it in project.json on first use."""
+    d = out_dir(video)
+    stored = load_project(d).get("language")
     if override:
         code, source = normalize(override), "user"
-    elif "language" in meta:
-        return meta["language"]
+        if code == stored:
+            return code
+        if stored:
+            print(f"output language changes from {name(stored)} to {name(code)}: deleting generated texts")
+            invalidate_generated(video)
+    elif stored:
+        return stored
     else:
         code, source = detect(video)
-    meta |= {"language": code, "language_source": source}
-    path.write_text(json.dumps(meta, indent=1))
+    update_project(d, language=code, language_source=source)
     print(f"output language: {name(code)} ({source})")
     return code

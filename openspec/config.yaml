@@ -11,7 +11,7 @@ context: |
     per-video output language: user choice, else detected from the transcript, else from the title. The transcript
     always stays in the spoken language.
   - Every pipeline step is resumable and skips finished work unless forced.
-  - Quality claims need numbers from `ovu eval` (per-second Hit@1/Hit@3/MRR) on the eval sets in eval/.
+  - Quality claims need numbers from `ovu eval` (per-second Hit@1/Hit@3/MRR) on the projects' eval.json sets.
 
 rules:
   proposal:

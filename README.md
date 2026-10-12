@@ -2,8 +2,8 @@
 
 **Understand and search videos with local models only.** Give it a video file or a URL and it transcribes the speech,
 embeds frames, scenes, audio and text into one vector space, describes every scene with a local vision-language
-model, groups the scenes into chapters with a summary, and lets you search the video by text in a browser GUI, down
-to the second. Nothing is sent to a cloud API; everything runs on one consumer GPU (developed on an 8 GB RTX 3070
+model, groups the scenes into chapters with a summary, writes a PDF report (one picture, time range and summary per
+chapter), and lets you search the video by text in a browser GUI, down to the second. Nothing is sent to a cloud API; everything runs on one consumer GPU (developed on an 8 GB RTX 3070
 Laptop).
 
 It is a research project: the question is how far fully local models get in video understanding, measured with a
@@ -17,23 +17,31 @@ YouTube downloads. Models (~12 GB) are downloaded from Hugging Face on first use
 ```bash
 uv sync
 
-# Download + full pipeline (transcript, embeddings, scene descriptions, chapters)
-uv run ovu process "https://www.youtube.com/watch?v=..." --cookies-from chrome
-# ... or for a local file
-cp my-video.mp4 data/videos/ && uv run ovu process my-video
+# One project per video: copy a local file or download a URL
+uv run ovu new my-video ~/Videos/clip.mp4
+uv run ovu new my-talk "https://www.youtube.com/watch?v=..." --cookies-from chrome
 
-uv run ovu list                       # videos and what has been computed
+# Pipeline: transcript + embeddings (search works after this)
+uv run ovu process my-video
+# Optional, slow: scene descriptions, chapters and PDF report with a local vision-language model
+uv run ovu process my-video --vlm [--language de]
+
+uv run ovu list                       # projects, language and what has been computed
 uv run ovu app my-video               # GUI on http://localhost:7860
 uv run ovu search my-video "a red car in the rain"
+open data/projects/my-video/report.pdf
 ```
 
-- A video argument is a path or a (partial) slug of a file in `data/videos/`.
+- Each project lives in `data/projects/<name>/`: the video, `project.json`, all results, `report.pdf` and an optional
+  eval set `eval.json`. Commands take the project name or a unique part of it.
 - Every step skips finished work, so an interrupted `ovu process` simply continues; `--force` recomputes.
-- Generated texts (descriptions, chapters, summary) use the language spoken in the video, or the title's language if
-  there is no speech; choose another with `--language en|de|fr|...`. The transcript always stays in the original
-  language.
+- The vision-language model (Qwen3-VL, ~9 GB download, ~3 s of compute per second of video) is off by default;
+  `--vlm` adds scene descriptions, chapters with summary and `report.pdf`.
+- Generated texts (descriptions, chapters, summary, report) use the language spoken in the video, or the title's
+  language if there is no speech; choose another with `--language en|de|fr|...` (changing it regenerates them). The
+  transcript always stays in the original language.
 - YouTube often refuses anonymous downloads; `--cookies-from chrome` (or `firefox`) uses your browser's cookies.
-- Single steps: `ovu download | transcribe | embed | caption [--context] | chapters | search | eval | app`.
+- Single steps: `ovu transcribe | embed | caption [--context] | chapters | report | search | eval | app`.
 
 **The GUI** shows the video with a timeline: chapters, a filmstrip, the similarity curve of the selected search
 variant with its top hits, and one heatmap row per variant. Click the timeline to jump, hover for a preview, press
@@ -55,9 +63,8 @@ npm install -g @fission-ai/openspec   # spec-driven workflow (optional for small
   constraints are in [`openspec/config.yaml`](openspec/config.yaml). New features start as an OpenSpec change
   (`openspec new change <name>` or `/opsx:propose` in Claude Code), are implemented, then archived into the specs.
 - **Local models only**, and pipeline prompts stay generic: no names, genres or examples from a particular video.
-- **Measure.** Changes affecting retrieval quality come with `ovu eval` numbers. Eval sets live in
-  `eval/<slug>.json` (format in [eval/README.md](eval/README.md)) and are not committed, since they describe video
-  content.
-- **Never commit videos or results.** `data/` is git-ignored; so are eval sets.
+- **Measure.** Changes affecting retrieval quality come with `ovu eval` numbers. Eval sets live in the project as
+  `eval.json` (format in [eval/README.md](eval/README.md)) and are not committed, since they describe video content.
+- **Never commit videos, results or eval sets.** `data/` is git-ignored.
 - Code is English, plain Python modules under `src/ovu/` (one module per pipeline step); see [AGENTS.md](AGENTS.md)
   for orientation.

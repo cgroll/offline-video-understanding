@@ -6,20 +6,29 @@ Run the whole local pipeline, or single steps, with one command-line tool `ovu`.
 ## Requirements
 
 ### Requirement: Full pipeline
-`ovu process <url-or-video>` SHALL download the video if a URL is given, then run transcription, `frame` and
-`video_shots` embeddings, plain and context scene descriptions, chapters, and finally all remaining embedding
-variants; `--no-vlm` SHALL skip descriptions and chapters and `--language` SHALL set the output language. The VLM
-SHALL be loaded once for all VLM steps.
+`ovu process <project>` SHALL run transcription and all embedding variants that need no VLM output. With `--vlm` it
+SHALL additionally run plain and context scene descriptions, chapters, their embeddings and finally the chapter
+report, loading the VLM once for all VLM steps. `--language` SHALL set the output language; without `--vlm` it only
+stores it in the project.
 
 #### Scenario: Re-running after an interruption
-- **WHEN** `ovu process` is run again on a partially processed video
+- **WHEN** `ovu process` is run again on a partially processed project
 - **THEN** finished steps are skipped and processing continues where it stopped
 
+#### Scenario: Report at the end
+- **WHEN** `ovu process --vlm` completes on a project
+- **THEN** `report.pdf` exists in the project directory
+
+#### Scenario: Default run without VLM
+- **WHEN** the user runs `ovu process <project>` without `--vlm`
+- **THEN** transcript and the `frame`, `video_shots`, `text`, `video`, `audio`, `video_audio` and `text_video`
+  embeddings are computed, no vision-language model is loaded, and no descriptions, chapters or report are created
+
 ### Requirement: Single steps and overview
-The CLI SHALL provide `list`, `download`, `transcribe`, `embed`, `caption [--context]`, `chapters`, `search`, `eval`
-and `app` subcommands, each step accepting `--force`; `ovu list` SHALL show every video in `data/videos/` with the
-result files already computed.
+The CLI SHALL provide `new`, `list`, `transcribe`, `embed`, `caption [--context]`, `chapters`, `report`, `search`,
+`eval` and `app` subcommands, each processing step accepting `--force`; `ovu list` SHALL show every project with its
+title, output language and the result files already computed.
 
 #### Scenario: Overview
 - **WHEN** the user runs `ovu list`
-- **THEN** each video slug is printed with its existing result files, or "(not processed)"
+- **THEN** each project is printed with title, language and existing result files, or "(not processed)"

@@ -9,7 +9,7 @@ import numpy as np
 
 from ovu.embed import load_embeddings
 from ovu.media import make_thumbs
-from ovu.paths import eval_file, out_dir
+from ovu.paths import eval_file, out_dir, title
 from ovu.search import per_second as fused_per_second
 from ovu.segments import spans, to_seconds
 from ovu.transcribe import load_transcript
@@ -77,7 +77,7 @@ def create_app(video: Path):
 
     @app.get("/api/meta")
     def meta():
-        return {"title": video.stem, "duration": transcript["duration"], "n_seconds": n_sec,
+        return {"title": title(video), "duration": transcript["duration"], "n_seconds": n_sec,
                 "variants": [{"id": v, "label": {**VARIANTS, **FUSIONS}[v]} for v in fusions + variants],
                 "segments": transcript["segments"],
                 "examples": examples,
