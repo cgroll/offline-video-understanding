@@ -9,6 +9,7 @@ Eval, two levels (each query has relevant time intervals):
           it overlaps an interval by >= min(3 s, interval length, unit length)
   second  every variant incl. fusions, scores spread to seconds; ranked over peaks (plateau centers, >= 8 s
           apart) like the GUI; a peak is relevant if it lies inside an interval +-2 s. Measures localization.
+Optional "boundaries" (reference chapter starts): precision/recall/F1 of the topic and VLM chapter starts, +-5 s.
 """
 
 import json
@@ -23,6 +24,7 @@ from ovu.segments import spans, to_seconds
 FUSIONS = ["text+video", "text+video_shots", "text+frame", "text+video+audio", "text+caption",
            "caption+frame", "text+caption+frame", "caption_ctx+frame", "chapter+frame", "chapter+caption_ctx+frame"]
 MIN_OVERLAP_S = 3.0
+BOUNDARY_TOL_S = 5
 NMS_S = 8
 TOL_S = 2
 MISS = 10**6
@@ -101,13 +103,38 @@ def report(df, variants: list[str], title: str) -> None:
     print(wide.round(2).to_string())
 
 
+def boundary_scores(pred: list[float], ref: list[float]) -> dict:
+    """One-to-one matching within BOUNDARY_TOL_S, closest pairs first; start 0 is not a boundary."""
+    pred = sorted({float(p) for p in pred if p > 0})
+    pairs = sorted((abs(p - r), i, j) for i, p in enumerate(pred) for j, r in enumerate(ref)
+                   if abs(p - r) <= BOUNDARY_TOL_S)
+    used_p, used_r = set(), set()
+    for _, i, j in pairs:
+        if i not in used_p and j not in used_r:
+            used_p.add(i), used_r.add(j)
+    tp = len(used_p)
+    prec, rec = tp / len(pred) if pred else 0.0, tp / len(ref) if ref else 0.0
+    return {"n": len(pred), "P": prec, "R": rec, "F1": 2 * prec * rec / (prec + rec) if tp else 0.0}
+
+
 def evaluate(video: Path, queries_file: Path) -> None:
+    emb = load_embeddings(video)
+    data = json.loads(queries_file.read_text())
+    if data.get("boundaries"):
+        print(f"===== chapter boundaries =====  (reference: {len(data['boundaries'])}, +-{BOUNDARY_TOL_S} s)")
+        for v in ("topic", "chapter"):
+            if f"{v}_starts" in emb:
+                r = boundary_scores(emb[f"{v}_starts"].tolist(), data["boundaries"])
+                print(f"{v:8s} n={r['n']:3d}  P={r['P']:.2f}  R={r['R']:.2f}  F1={r['F1']:.2f}")
+    if data.get("queries"):
+        evaluate_queries(emb, data["queries"])
+
+
+def evaluate_queries(emb: dict, queries: list[dict]) -> None:
     import pandas as pd
 
     from ovu.embedder import encode_queries, load_embedder
 
-    emb = load_embeddings(video)
-    queries = json.loads(queries_file.read_text())["queries"]
     q = encode_queries(load_embedder(audio=False), [x["q"] for x in queries])
     stored = [v for v in VARIANTS if v in emb]
     fused = stored + [f for f in FUSIONS if all(v in emb for v in f.split("+"))]

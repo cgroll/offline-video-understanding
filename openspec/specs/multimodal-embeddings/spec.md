@@ -16,8 +16,9 @@ The system SHALL compute L2-normalized 768-d EmbeddingGemma 2 vectors (bfloat16 
 
 ### Requirement: Embedding variants
 The system SHALL provide the variants `frame` (one image per second); `text`, `video`, `audio`, `video_audio`,
-`text_video` (20 s windows, 10 s stride); `video_shots`, `caption`, `caption_ctx` (per content segment); and
-`chapter` (per chapter).
+`text_video` (20 s windows, 10 s stride); `video_shots`, `caption`, `caption_ctx` (per content segment); `chapter`
+(per chapter); and `topic` (per topic chapter: its transcript text as a document, spans in
+`topic_starts`/`topic_ends`).
 
 #### Scenario: Window without speech
 - **WHEN** a 20 s window contains no transcribed words
@@ -26,6 +27,10 @@ The system SHALL provide the variants `frame` (one image per second); `text`, `v
 #### Scenario: Frames sampled at 1 fps
 - **WHEN** video or frame variants are computed
 - **THEN** frames are decoded with ffmpeg at 1 fps and 640x360 and passed to the model without resampling
+
+#### Scenario: Topic variant without VLM
+- **WHEN** `ovu process <project>` runs without `--vlm` on a video with speech
+- **THEN** `embeddings.npz` contains `topic`, `topic_starts` and `topic_ends`
 
 ### Requirement: Content segments
 The system SHALL split a video into content segments of 2 to 10 s at 1 s resolution, with boundaries at hard cuts

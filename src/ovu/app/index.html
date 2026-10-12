@@ -97,6 +97,7 @@ canvas { display: block; width: 100%; cursor: crosshair; }
 .hit .meta { padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
 .hit .meta .line { display: flex; justify-content: space-between; align-items: center; }
 .hit .meta .tm { font-weight: 600; }
+.hit .meta .dur { color: var(--ink-3); font-size: 12px; }
 .hit .meta .snip { color: var(--ink-2); font-size: 12px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .hit .meta button { padding: 2px 8px; font-size: 12px; }
 .empty { padding: 28px; color: var(--ink-3); text-align: center; }
@@ -147,6 +148,11 @@ canvas { display: block; width: 100%; cursor: crosshair; }
     </div>
   </section>
 
+  <section class="panel" id="chpanel" hidden>
+    <h2 id="chhead">Chapters <span></span></h2>
+    <div class="hits" id="chhits"><div class="empty">No search yet.</div></div>
+  </section>
+
   <section class="panel">
     <h2 id="hitshead">Top hits <span></span></h2>
     <div class="hits" id="hits"><div class="empty">No search yet.</div></div>
@@ -160,7 +166,8 @@ const K_HITS = 8;
 // min. distance between hits: window variants are smooth over 20 s, so their peaks need more spacing
 const nmsFor = v => (v.includes("frame") || v === "video_shots") ? 6 : 15;
 
-let meta = null, scores = null, mode = null;  // mode: {kind:"query", q} | {kind:"similar", t}
+const K_CHAPTERS = 4;
+let meta = null, scores = null, units = {}, mode = null;  // mode: {kind:"query", q} | {kind:"similar", t}
 let selVar = "text+frame", hover = null, panelTab = "speech";
 const thumbs = new Map();
 
@@ -197,6 +204,7 @@ async function init() {
   }
   if (!meta.captions.length) $("tabs").querySelector('[data-tab="scenes"]').style.display = "none";
   if (!meta.chapters.length) $("tabs").querySelector('[data-tab="chapters"]').style.display = "none";
+  $("chpanel").hidden = !meta.topics.length && !meta.chapters.length;
   if (!meta.variants.some(v => v.id === selVar)) selVar = meta.variants[0].id;
   $("tabs").querySelectorAll("button").forEach(b => b.onclick = () => { panelTab = b.dataset.tab; lastSeg = null; renderSegs(); onTime(); });
   renderVarCtrl(); renderSegs(); resize();
@@ -206,7 +214,7 @@ async function runQuery(q) {
   q = q.trim(); if (!q) return;
   $("status").innerHTML = "Searching …";
   const r = await (await fetch("/api/query?q=" + encodeURIComponent(q))).json();
-  scores = r.scores; mode = { kind: "query", q };
+  scores = r.scores; units = r.units || {}; mode = { kind: "query", q };
   $("status").innerHTML = `Textsuche: <b>${escapeHtml(q)}</b>`;
   afterScores();
 }
@@ -214,7 +222,7 @@ async function runQuery(q) {
 async function runSimilar(t) {
   t = Math.min(meta.n_seconds - 1, Math.max(0, Math.floor(t)));
   const r = await (await fetch("/api/similar?t=" + t)).json();
-  scores = r.scores; mode = { kind: "similar", t };
+  scores = r.scores; units = r.units || {}; mode = { kind: "similar", t };
   $("status").innerHTML = `Similar to the frame at <b class="mono">${fmt(t)}</b>`;
   if (!scores[selVar]) selVar = "video_shots" in scores ? "video_shots" : "frame";
   afterScores();
@@ -299,6 +307,12 @@ function renderSegs() {
 }
 function capAt(t) { return meta.captions.find(c => c.start <= t && t < c.end) || null; }
 function chAt(t) { return meta.chapters.find(c => c.start <= t && t < c.end) || null; }
+function topicAt(t) { return meta.topics.find(c => c.start <= t && t < c.end) || null; }
+// chapter list for the hit cards: topic chapters, else the VLM chapters
+function chapterUnits() {
+  if (meta.topics.length) return { key: "topic", items: meta.topics, label: "topic chapters", text: c => c.text };
+  return { key: "chapter", items: meta.chapters, label: "chapters (VLM)", text: c => `${c.title}: ${c.summary}` };
+}
 function highlight(text) {
   let h = escapeHtml(text);
   if (mode && mode.kind === "query") {
@@ -308,7 +322,29 @@ function highlight(text) {
   return h;
 }
 
+function renderChapterHits() {
+  const box = $("chhits"); box.innerHTML = "";
+  const { key, items, label, text } = chapterUnits(), u = units[key], arr = scores && scores[selVar];
+  $("chhead").querySelector("span").textContent = u ? `${label}, by chapter vector` : "";
+  if (!u) { box.innerHTML = `<div class="empty">${scores ? "No chapter scores for this search." : "No search yet."}</div>`; return; }
+  const src = mode.kind === "similar" ? items.findIndex(c => c.start <= mode.t + .5 && mode.t + .5 < c.end) : -1;
+  const order = items.map((c, i) => i).filter(i => i !== src).sort((a, b) => u[b] - u[a]).slice(0, K_CHAPTERS);
+  order.forEach((i, k) => {
+    const c = items[i], a = Math.floor(c.start), b = Math.max(a + 1, Math.ceil(c.end));
+    // thumbnail: the best second of the selected variant inside the chapter
+    let t = a;
+    if (arr) for (let x = a; x < Math.min(b, arr.length); x++) if (arr[x] > arr[t]) t = x;
+    const d = document.createElement("div"); d.className = "hit";
+    d.innerHTML = `<div class="img"><img loading="lazy" src="${thumbUrl(t)}" alt="Frame at ${fmt(t)}"><span class="rank">${k + 1}</span><span class="sim mono">${u[i].toFixed(3)}</span></div>
+      <div class="meta"><div class="line"><span class="tm mono">${fmt(c.start)}–${fmt(c.end)}</span><span class="dur mono">${fmt(c.end - c.start)}</span></div>
+      <div class="snip">${highlight(text(c))}</div></div>`;
+    d.onclick = () => seek(c.start);
+    box.append(d);
+  });
+}
+
 function renderHits() {
+  renderChapterHits();
   const box = $("hits"); box.innerHTML = "";
   const arr = scores && scores[selVar];
   const label = meta.variants.find(v => v.id === selVar).label;
@@ -331,10 +367,11 @@ function seek(t) { video.currentTime = t + 0.01; video.pause(); }
 
 // ---------- timeline canvas ----------
 const L = 190, R = 14, CH_H = 26, STRIP_H = 50, CHART_H = 120, ROW_H = 22, ROW_GAP = 4, AXIS_H = 22, GAP = 12;
-let W = 0, H = 0, rowsY = 0, chartY = 0, stripY = 0;
+let W = 0, H = 0, rowsY = 0, chartY = 0, stripY = 0, topicY = 0;
 function layout() {
   const nRows = meta.variants.length;
-  stripY = meta.chapters.length ? CH_H + 6 : 0;
+  topicY = meta.chapters.length ? CH_H + 6 : 0;
+  stripY = topicY + (meta.topics.length ? CH_H + 6 : 0);
   chartY = stripY + STRIP_H + GAP;
   rowsY = chartY + CHART_H + GAP;
   H = rowsY + nRows * (ROW_H + ROW_GAP) + AXIS_H;
@@ -368,6 +405,28 @@ function draw() {
       if (c === curCh) { ctx.strokeStyle = accent; ctx.lineWidth = 2; ctx.strokeRect(x0 + 1, 1, x1 - x0 - 4, CH_H - 2); }
       ctx.save(); ctx.beginPath(); ctx.rect(x0 + 4, 0, x1 - x0 - 10, CH_H); ctx.clip();
       ctx.fillStyle = css("--ink"); ctx.font = "11px system-ui, sans-serif"; ctx.fillText(c.title, x0 + 6, CH_H / 2);
+      ctx.restore();
+    });
+    ctx.font = "12px system-ui, sans-serif";
+  }
+
+  // topic track: one block per topic chapter, after a search coloured by its chapter score
+  if (meta.topics.length) {
+    ctx.fillStyle = ink2; ctx.textAlign = "left"; ctx.fillText("Topics", 14, topicY + CH_H / 2);
+    const cur = topicAt(video.currentTime), u = units.topic;
+    const [ua, ub] = u ? [Math.min(...u), Math.max(...u)] : [0, 1];
+    meta.topics.forEach((c, i) => {
+      const x0 = xOf(c.start), x1 = xOf(c.end);
+      let fill = i % 2 ? css("--surface-2") : empty, ink = css("--ink");
+      if (u) {
+        fill = lerpColor(lo, hi, (u[i] - ua) / (ub - ua || 1));
+        const [rr, gg, bb] = fill.match(/\d+/g).map(Number);
+        ink = 0.299 * rr + 0.587 * gg + 0.114 * bb > 140 ? "#0b0b0b" : "#ffffff";
+      }
+      ctx.fillStyle = fill; ctx.fillRect(x0, topicY, x1 - x0 - 2, CH_H);
+      if (c === cur) { ctx.strokeStyle = accent; ctx.lineWidth = 2; ctx.strokeRect(x0 + 1, topicY + 1, x1 - x0 - 4, CH_H - 2); }
+      ctx.save(); ctx.beginPath(); ctx.rect(x0 + 4, topicY, x1 - x0 - 10, CH_H); ctx.clip();
+      ctx.fillStyle = ink; ctx.font = "11px system-ui, sans-serif"; ctx.fillText(c.text, x0 + 6, topicY + CH_H / 2);
       ctx.restore();
     });
     ctx.font = "12px system-ui, sans-serif";
@@ -464,15 +523,17 @@ canvas.addEventListener("mousemove", e => {
 canvas.addEventListener("mouseleave", hideTip);
 canvas.addEventListener("click", e => {
   const r = canvas.getBoundingClientRect(), x = e.clientX - r.left;
-  if (x >= L && x <= W - R) seek(tOf(x));
+  if (x < L || x > W - R) return;
+  const y = e.clientY - r.top, tp = meta.topics.length && y >= topicY && y < topicY + CH_H && topicAt(tOf(x) + .5);
+  seek(tp ? tp.start : tOf(x));
 });
 function hideTip() { hover = null; tip.style.display = "none"; draw(); }
 function showTip(t, x, y) {
-  const seg = segAt(t + .5), cap = capAt(t + .5), ch = chAt(t + .5);
+  const seg = segAt(t + .5), cap = capAt(t + .5), ch = chAt(t + .5), tp = topicAt(t + .5);
   let rows = "";
   if (scores) for (const v of meta.variants) if (scores[v.id])
     rows += `<div class="row${v.id === selVar ? " sel" : ""}"><span>${v.label.replace(/ \(.*\)/, "")}</span><span class="mono">${(v.id === "text" && scores.text[t] === 0) ? "–" : scores[v.id][t].toFixed(3)}</span></div>`;
-  tip.innerHTML = `<img src="${thumbUrl(t)}" alt=""><div class="head mono">${fmt(t)}</div>${rows}${ch ? `<div class="ch">Chapter: ${escapeHtml(ch.title)}</div>` : ""}${cap ? `<div class="cap">${escapeHtml(cap.description)}</div>` : ""}${seg ? `<div class="snip">“${escapeHtml(seg.text)}”</div>` : ""}`;
+  tip.innerHTML = `<img src="${thumbUrl(t)}" alt=""><div class="head mono">${fmt(t)}</div>${rows}${ch ? `<div class="ch">Chapter: ${escapeHtml(ch.title)}</div>` : ""}${tp ? `<div class="ch">Topic ${fmt(tp.start)}–${fmt(tp.end)}: ${escapeHtml(tp.text.slice(0, 80))}${tp.text.length > 80 ? "…" : ""}</div>` : ""}${cap ? `<div class="cap">${escapeHtml(cap.description)}</div>` : ""}${seg ? `<div class="snip">“${escapeHtml(seg.text)}”</div>` : ""}`;
   tip.style.display = "block";
   const tw = 230, wrapW = $("cwrap").clientWidth;
   tip.style.left = Math.min(wrapW - tw - 4, x + 16) + "px";

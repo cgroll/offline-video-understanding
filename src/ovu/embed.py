@@ -12,6 +12,8 @@ Variants:
   caption      VLM scene descriptions (captions.json) embedded as text, same spans as video_shots
   caption_ctx  same for the descriptions with context (captions_ctx.json)
   chapter      chapter title + summary (chapters.json); spans in chapter_starts/chapter_ends
+  topic        transcript text of each topic chapter (ovu.topics: sentences split by their embeddings, no VLM);
+               spans in topic_starts/topic_ends; only for videos with speech
 Window spans are stored as starts/ends, the window transcripts as texts.
 """
 
@@ -25,10 +27,12 @@ from ovu.embedder import DIM, as_document, load_embedder
 from ovu.media import SAMPLE_RATE, load_audio, load_frames, scene_cuts
 from ovu.paths import out_dir
 from ovu.segments import shots, window_text, windows
+from ovu.topics import MIN_SENTENCES, segment, spans
 from ovu.transcribe import load_transcript
 
 WINDOW_VARIANTS = ["text", "video", "audio", "video_audio", "text_video"]
-VARIANTS = WINDOW_VARIANTS + ["frame", "video_shots", "caption", "caption_ctx", "chapter"]
+VARIANTS = WINDOW_VARIANTS + ["frame", "video_shots", "caption", "caption_ctx", "chapter", "topic"]
+FRAME_VARIANTS = ["frame", "video_shots", "video", "video_audio", "text_video"]
 CAPTION_FILES = {"caption": "captions.json", "caption_ctx": "captions_ctx.json"}
 
 
@@ -46,10 +50,15 @@ def load_embeddings(video: Path) -> dict:
 
 
 def available(video: Path) -> list[str]:
-    """Variants whose inputs exist (VLM outputs are optional)."""
+    """Variants whose inputs exist (VLM outputs are optional, topic chapters need speech)."""
     d = out_dir(video)
+    speech = len(sentences(load_transcript(video))) >= MIN_SENTENCES
     return [v for v in VARIANTS if (v not in CAPTION_FILES or (d / CAPTION_FILES[v]).exists())
-            and (v != "chapter" or (d / "chapters.json").exists())]
+            and (v != "chapter" or (d / "chapters.json").exists()) and (v != "topic" or speech)]
+
+
+def sentences(transcript: dict) -> list[dict]:
+    return [s for s in transcript["segments"] if s["text"].strip()]
 
 
 def run(video: Path, variants: list[str] | None = None, force: bool = False) -> None:
@@ -71,7 +80,7 @@ def run(video: Path, variants: list[str] | None = None, force: bool = False) -> 
     transcript = load_transcript(video)
     wins = windows(transcript["duration"])
     texts = [window_text(transcript["words"], s, e) for s, e in wins]
-    frames = load_frames(video)
+    frames = load_frames(video) if any(v in FRAME_VARIANTS for v in variants) else None
     audio = load_audio(video) if any("audio" in v for v in variants) else None
     model = load_embedder(audio=audio is not None)
 
@@ -119,6 +128,16 @@ def run(video: Path, variants: list[str] | None = None, force: bool = False) -> 
             result |= {"chapter_starts": np.array([c["start"] for c in chapters]),
                        "chapter_ends": np.array([c["end"] for c in chapters])}
             print(f"chapter: {len(chapters)} chapters")
+        if "topic" in variants:
+            t0 = time.time()
+            sents = sentences(transcript)
+            sent_emb = model.encode([as_document(s["text"]) for s in sents], normalize_embeddings=True)
+            starts = segment(sent_emb)
+            ts, te = spans(starts, np.array([s["start"] for s in sents]), transcript["duration"])
+            texts_ch = [" ".join(s["text"] for s in sents[a:b]) for a, b in zip(starts, starts[1:] + [len(sents)])]
+            result |= {"topic": model.encode([as_document(t) for t in texts_ch], normalize_embeddings=True)
+                       .astype(np.float32), "topic_starts": ts, "topic_ends": te}
+            print(f"topic: {len(starts)} chapters from {len(sents)} sentences in {time.time() - t0:.1f}s")
         for v in [v for v in variants if v in WINDOW_VARIANTS]:
             t0 = time.time()
             vecs = []

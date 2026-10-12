@@ -16,14 +16,21 @@ text side of EmbeddingGemma 2 in memory.
 - **THEN** the video jumps to that second and pauses
 
 ### Requirement: Timeline visualisation
-The GUI SHALL show a chapter track (if chapters exist), a filmstrip with segment boundary ticks, a curve of the
-selected variant with numbered top peaks, one heatmap row per variant (colour scaled per row), a playhead and a hover
-tooltip with thumbnail, time, all variant scores, chapter title, scene description and spoken text.
+The GUI SHALL show a chapter track (if chapters exist), a topic track (if topic chapters exist), a filmstrip with
+segment boundary ticks, a curve of the selected variant with numbered top peaks, one heatmap row per variant (colour
+scaled per row), a playhead and a hover tooltip with thumbnail, time, all variant scores, chapter and topic chapter,
+scene description and spoken text.
 
 #### Scenario: Text query
 - **WHEN** the user submits a query
 - **THEN** every row shows the per-second similarity and the top hits appear as cards with thumbnail, time, score,
   scene description and spoken text
+
+#### Scenario: Topic track
+- **WHEN** a video with topic chapters is open
+- **THEN** the topic track shows one block per topic chapter labelled with the beginning of its first sentence, the
+  block under the playhead is outlined, clicking a block seeks to its start, and after a query each block shows its
+  score on the colour ramp
 
 ### Requirement: Similar frames
 The GUI SHALL rank the video by similarity to the unit (frame, window, segment, chapter) containing the current or a
@@ -41,3 +48,13 @@ For videos without speech the scene tab and the best description-based fusion SH
 #### Scenario: Video without speech
 - **WHEN** the GUI opens a video whose transcript is empty
 - **THEN** the scene description tab is shown and the default variant is `caption_ctx+frame` if available
+
+### Requirement: Chapter hits
+After a query or a similarity search the GUI SHALL list the best matching chapters above the clip hits, ranked by the
+cosine similarity of their own vector: topic chapters, or the VLM chapters when the video has no topic chapters.
+
+#### Scenario: Open a found chapter
+- **WHEN** the user clicks a chapter card
+- **THEN** the video seeks to the chapter start; the card shows rank, similarity score, time range, duration, the
+  thumbnail of the best-matching second inside the chapter for the selected variant, and the chapter's title or first
+  sentence

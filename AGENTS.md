@@ -14,6 +14,7 @@ GUI) first; behaviour is specified in `openspec/specs/<capability>/spec.md`.
 | `src/ovu/segments.py` | windows, content segments (`shots`), `spans`, `to_seconds` (unit → per-second scores) |
 | `src/ovu/embedder.py`, `vlm.py` | model loading: EmbeddingGemma 2, Qwen3-VL-4B (4-bit); `vlm.generate` |
 | `src/ovu/transcribe.py`, `embed.py`, `caption.py`, `chapters.py` | pipeline steps, each with `run(video, ..., force)` |
+| `src/ovu/topics.py` | topic chapters from transcript sentence embeddings (DP split, k by silhouette; no VLM) |
 | `src/ovu/language.py` | output language (user > `project.json` > transcript > title > English); invalidation |
 | `src/ovu/report.py` | PDF report: representative frame, time range, summary per chapter |
 | `src/ovu/search.py` | per-second scoring, fusion, peaks, `ovu search`, `ovu eval` |
@@ -23,8 +24,9 @@ GUI) first; behaviour is specified in `openspec/specs/<capability>/spec.md`.
 
 Files per project (`data/projects/<name>/`): the video, `project.json` (name, video, title, language),
 `transcript.json`, `embeddings.npz` (all variants plus `starts/ends`, `shot_starts/shot_ends`,
-`chapter_starts/chapter_ends`, `scene_cuts`), `captions.json`, `summary.json`, `captions_ctx.json`, `chapters.json`,
-`report.pdf`, `thumbs/`, optional `eval.json`. Pipeline functions take the video path; its parent is the project.
+`chapter_starts/chapter_ends`, `topic_starts/topic_ends`, `scene_cuts`), `captions.json`, `summary.json`,
+`captions_ctx.json`, `chapters.json`, `report.pdf`, `thumbs/`, optional `eval.json`. Pipeline functions take the
+video path; its parent is the project.
 
 ## Rules
 

@@ -42,6 +42,11 @@ chapters, report) need the vision-language model and run only with `--vlm`.
    - 20 s windows, 10 s stride: `text` (transcript), `video`, `audio`, `video_audio`, `text_video`
    - per segment: `caption`, `caption_ctx` (descriptions embedded as text)
    - per chapter: `chapter`
+   - per topic chapter: `topic`. These chapters come from the transcript without the VLM, so this step also runs
+     without `--vlm`: each transcript sentence is embedded, an exact dynamic program finds the best split into k
+     contiguous chapters (low dissimilarity inside each chapter) for every k ≤ 40, and the k with the highest
+     silhouette score is kept. Each chapter's text is embedded as one document; spans in `topic_starts`/`topic_ends`.
+     There is no topic chapter without speech.
 10. **Report** → `report.pdf`: title page with plot, characters and themes, then one entry per chapter with number,
     time range, title, summary and one representative frame: the non-black frame in the chapter whose image embedding
     is closest to the chapter's text embedding (EmbeddingGemma 2 is cross-modal, so this picks the picture that best
@@ -65,7 +70,10 @@ A FastAPI server keeps the text side of EmbeddingGemma 2 in memory and serves on
 - **Side tabs**: spoken transcript, scene descriptions (with context if available) and chapters with the overall
   summary; the entry at the playhead is highlighted, a click jumps there, and during a search a bar shows how well
   each entry matches.
-- **Timeline**: chapter track, filmstrip with segment boundaries, a curve of the selected variant with numbered top
+- **Timeline**: chapter track, topic track (labelled with each chapter's first sentence; coloured by the query
+  score after a search), filmstrip with segment boundaries, a curve of the selected variant with numbered top
   hits, one heatmap row per variant (colour scaled per row), playhead; hover shows thumbnail, all scores, chapter,
   description and speech; click seeks.
+- **Chapter hits**: the best matching topic chapters (VLM chapters if there are none), as cards with rank, score,
+  time range and the best-matching frame inside the chapter; a click plays the chapter from its start.
 - **Top hits**: cards with thumbnail, time, score, description and speech, each with a "similar" button.

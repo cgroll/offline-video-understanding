@@ -1,6 +1,7 @@
 """Time units the embeddings are computed on, and spreading unit scores to one score per second.
 
-Units: frame (1 s), window (20 s, 10 s stride), shot (content segment, 2-10 s), chapter (story section).
+Units: frame (1 s), window (20 s, 10 s stride), shot (content segment, 2-10 s), chapter (story section),
+topic chapter (sentences grouped by topic).
 """
 
 import numpy as np
@@ -55,6 +56,8 @@ def spans(emb: dict, variant: str) -> tuple[np.ndarray, np.ndarray]:
         return emb["shot_starts"], emb["shot_ends"]
     if variant == "chapter":
         return emb["chapter_starts"], emb["chapter_ends"]
+    if variant == "topic":
+        return emb["topic_starts"], emb["topic_ends"]
     return emb["starts"], emb["ends"]
 
 

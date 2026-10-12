@@ -44,9 +44,10 @@ open data/projects/my-video/report.pdf
 - Single steps: `ovu transcribe | embed | caption [--context] | chapters | report | search | eval | app`.
 
 **The GUI** shows the video with a timeline: chapters, a filmstrip, the similarity curve of the selected search
-variant with its top hits, and one heatmap row per variant. Click the timeline to jump, hover for a preview, press
-`S` to find moments similar to the current frame. Side tabs show the transcript, the scene descriptions and the
-chapters with the summary, all synchronized with playback.
+variant with its top hits, and one heatmap row per variant. Topic chapters, found from the transcript without the
+vision-language model, appear as their own track and as ranked chapter hits above the moment hits. Click the
+timeline to jump, hover for a preview, press `S` to find moments similar to the current frame. Side tabs show the
+transcript, the scene descriptions and the chapters with the summary, all synchronized with playback.
 
 **Runtime** (13 min video, RTX 3070 8 GB): transcription ~10 s, embeddings ~10 min, scene descriptions ~40 min,
 chapters ~2 min.

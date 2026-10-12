@@ -25,7 +25,9 @@ VARIANTS = {
     "caption": "Scene description (VLM)",
     "caption_ctx": "Scene description with context (VLM)",
     "chapter": "Chapters (VLM)",
+    "topic": "Topic chapters (transcript)",
 }
+UNIT_VARIANTS = ["topic", "chapter"]  # ranked as whole chapters in the GUI
 # late fusions (mean of per-second scores), only for text queries
 FUSIONS = {
     "text+frame": "Transcript + frame (fusion)",
@@ -48,7 +50,7 @@ def create_app(video: Path):
     emb = load_embeddings(video)
     transcript = load_transcript(video)
     ef = eval_file(video)
-    examples = [q["q"] for q in json.loads(ef.read_text())["queries"]][::5][:5] if ef.exists() else []
+    examples = [q["q"] for q in json.loads(ef.read_text()).get("queries", [])][::5][:5] if ef.exists() else []
     # show the descriptions with context when available
     cap_path = next((p for p in [vdir / "captions_ctx.json", vdir / "captions.json"] if p.exists()), None)
     captions = json.loads(cap_path.read_text()) if cap_path else []
@@ -57,6 +59,10 @@ def create_app(video: Path):
     n_sec = len(emb["frame"])
     variants = [v for v in VARIANTS if v in emb]
     fusions = [f for f in FUSIONS if all(v in emb for v in f.split("+"))]
+    sents = [s for s in transcript["segments"] if s["text"].strip()]
+    topics = [{"start": float(a), "end": float(b),
+               "text": next((s["text"] for s in sents if s["start"] >= a - 1e-6), "")}
+              for a, b in zip(emb.get("topic_starts", []), emb.get("topic_ends", []))]
     make_thumbs(video, vdir / "thumbs")
     model = load_embedder(audio=False)
 
@@ -81,7 +87,7 @@ def create_app(video: Path):
                 "variants": [{"id": v, "label": {**VARIANTS, **FUSIONS}[v]} for v in fusions + variants],
                 "segments": transcript["segments"],
                 "examples": examples,
-                "chapters": chapters["chapters"], "summary": chapters["summary"],
+                "chapters": chapters["chapters"], "summary": chapters["summary"], "topics": topics,
                 "shots": emb["shot_starts"].tolist() if "shot_starts" in emb else [],
                 "captions": [{k: c[k] for k in ("start", "end", "description", "on_screen_text", "shot_type")}
                              for c in captions]}
@@ -90,13 +96,14 @@ def create_app(video: Path):
     def query(q: str):
         with torch.inference_mode():
             qv = encode_queries(model, [q])
-        return {"scores": {v: as_list(fused_per_second(emb, qv, v)[0]) for v in variants + fusions}}
+        return {"scores": {v: as_list(fused_per_second(emb, qv, v)[0]) for v in variants + fusions},
+                "units": {v: as_list(emb[v] @ qv[0]) for v in UNIT_VARIANTS if v in emb}}
 
     @app.get("/api/similar")
     def similar(t: int):
         if not 0 <= t < n_sec:
             raise HTTPException(400, "t out of range")
-        scores = {}
+        scores, units = {}, {}
         # compare against the unit (frame / window / shot / chapter) containing t
         for v in variants:
             s, e = spans(emb, v)
@@ -104,7 +111,8 @@ def create_app(video: Path):
             u = int(inside[0]) if len(inside) else int(np.argmin(np.abs((s + e) / 2 - (t + 0.5))))
             if np.any(emb[v][u]):
                 scores[v] = as_list(to_seconds(emb, v, emb[v] @ emb[v][u]))
-        return {"scores": scores}
+                units[v] = emb[v] @ emb[v][u]
+        return {"scores": scores, "units": {v: as_list(units[v]) for v in UNIT_VARIANTS if v in units}}
 
     return app
 
