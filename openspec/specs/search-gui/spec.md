@@ -58,3 +58,15 @@ cosine similarity of their own vector: topic chapters, or the VLM chapters when 
 - **THEN** the video seeks to the chapter start; the card shows rank, similarity score, time range, duration, the
   thumbnail of the best-matching second inside the chapter for the selected variant, and the chapter's title or first
   sentence
+
+### Requirement: Playback speed
+The player SHALL offer the speeds 1×, 1.5× and 2× as a toggle in the player bar and via the keys `<` and `>`,
+SHALL show the active speed, and SHALL restore the last chosen speed when the GUI is opened again in the same browser.
+
+#### Scenario: Faster playback
+- **WHEN** the user clicks 2× or presses `>` twice from 1×
+- **THEN** the video plays at double speed, 2× is highlighted, and timeline and transcript stay in sync
+
+#### Scenario: Speed remembered
+- **WHEN** the user chose 1.5× and reloads the page
+- **THEN** the video starts at 1.5×

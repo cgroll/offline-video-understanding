@@ -66,7 +66,8 @@ best overall; 20 s windows localize poorly.
 
 A FastAPI server keeps the text side of EmbeddingGemma 2 in memory and serves one HTML page:
 
-- **Video player** with the current time and a button (key `S`) to find moments similar to the current frame.
+- **Video player** with the current time, a speed toggle 1× / 1.5× / 2× (keys `<` `>`, remembered per browser) and
+  a button (key `S`) to find moments similar to the current frame.
 - **Side tabs**: spoken transcript, scene descriptions (with context if available) and chapters with the overall
   summary; the entry at the playhead is highlighted, a click jumps there, and during a search a bar shows how well
   each entry matches.
