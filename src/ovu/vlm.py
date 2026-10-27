@@ -15,15 +15,23 @@ def load_vlm():
     return model, AutoProcessor.from_pretrained(MODEL)
 
 
-def generate(model, processor, content: list[dict], max_new_tokens: int = 300, **processor_kwargs) -> str:
-    """One user turn (text, images and/or video) -> the model's answer, greedy decoding."""
+def generate(model, processor, content: list[dict], max_new_tokens: int = 300, repetition_penalty: float = 1.15,
+            **processor_kwargs) -> str:
+    """One user turn (text, images and/or video) -> the model's answer, greedy decoding.
+
+    repetition_penalty (applied on top of greedy decoding, so the result stays deterministic) guards against
+    degenerate repetition loops (the model repeating one token/phrase until max_new_tokens cuts it off mid-answer,
+    e.g. observed with a longer prompt: 700 tokens of "Schneeschuhe" and no closing JSON) - more likely the longer
+    and more complex the prompt, so worth keeping on for every call, not just long ones.
+    """
     import torch
 
     inputs = processor.apply_chat_template([{"role": "user", "content": content}], tokenize=True,
                                            add_generation_prompt=True, return_dict=True, return_tensors="pt",
                                            processor_kwargs=processor_kwargs).to(model.device)
     with torch.inference_mode():
-        out = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
+        out = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False,
+                             repetition_penalty=repetition_penalty)
     return processor.decode(out[0, inputs["input_ids"].shape[1]:], skip_special_tokens=True)
 
 

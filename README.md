@@ -41,7 +41,43 @@ open data/projects/my-video/report.pdf
   language if there is no speech; choose another with `--language en|de|fr|...` (changing it regenerates them). The
   transcript always stays in the original language.
 - YouTube often refuses anonymous downloads; `--cookies-from chrome` (or `firefox`) uses your browser's cookies.
-- Single steps: `ovu transcribe | embed | caption [--context] | chapters | report | search | eval | app`.
+- Single steps: `ovu transcribe | embed | caption [--context] [--summary-only] | chapters | report | search | eval | app`.
+
+### Just "what is this video about?" (no per-scene descriptions)
+
+For a quick global summary - genre, characters, objects, places, a few sentences of plot - without the slow,
+scene-by-scene description pass:
+
+```bash
+uv run ovu process my-video --vlm --summary-only [--language de]
+cat data/projects/my-video/summary.json
+```
+
+This still runs transcription and the non-VLM embeddings as usual, then only the global-summary VLM call (seconds,
+not minutes) - no `captions.json`, `captions_ctx.json`, `chapters.json` or `report.pdf`. The summary is built from a
+40-frame storyboard spread over the whole video, the title, **and the video's own transcript** (a name or
+explanation said in speech can inform the summary even when the frames alone are ambiguous). `summary.json` is
+plain JSON:
+
+```json
+{"genre": "...", "characters": [{"name": "...", "appearance": "..."}], "objects": ["..."], "places": ["..."],
+ "plot": "3-6 sentences"}
+```
+
+**Calling this from another project** (e.g. a sibling project that wants a quick video summary, without sharing a
+Python environment with this repo - there is no importable API, only the CLI and the JSON files it writes):
+
+```bash
+cd /path/to/offline-video-understanding
+uv run ovu new <project-name> /path/to/video.mp4      # copies the video into data/projects/<project-name>/
+uv run ovu process <project-name> --vlm --summary-only --language de
+cat data/projects/<project-name>/summary.json          # stable path, read it directly
+```
+
+Runtime for a video a few minutes long is roughly tens of seconds, dominated by model loading and the one summary
+call, not video length; peak VRAM ~3.5-4.5 GB; fully local, no network calls. Note `ovu new` always copies the video
+file (plain filesystem copy, no hash verification) - a caller with its own rules about not duplicating originals
+should be aware of that before passing in a file it considers the single/original copy.
 
 **The GUI** shows the video with a timeline: chapters, a filmstrip, the similarity curve of the selected search
 variant with its top hits, and one heatmap row per variant. Topic chapters, found from the transcript without the

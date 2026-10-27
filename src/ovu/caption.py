@@ -3,8 +3,10 @@
 Plain mode -> captions.json: per scene 3 frames (start, middle, end; 960x540), no context.
 
 Context mode (hierarchical captioning) -> summary.json + captions_ctx.json:
-  1. once per video: a storyboard of 40 evenly spaced frames + the video title -> global summary (characters with
-     fixed names, recurring objects, places, plot)
+  1. once per video: a storyboard of 40 evenly spaced frames + the video title + the full spoken transcript (if any)
+     -> global summary (characters with fixed names, recurring objects, places, plot). The transcript is this
+     video's own speech-to-text output, not external knowledge, so it stays within the "generic prompts" rule; it
+     often names people the images alone cannot (e.g. a parent saying a child's name while filming).
   2. per scene: all frames of the scene as video input (1 fps, 640x360) + the global summary + the previous scene's
      description as text context; the model is told to describe only the current scene.
      Near-empty scenes (black / uniform frames) are described without context, since the model otherwise fills them
@@ -12,7 +14,7 @@ Context mode (hierarchical captioning) -> summary.json + captions_ctx.json:
 
 Captions: [{start, end, description, on_screen_text, shot_type, keywords, raw}], written in the output language
 (see ovu.language). Resumable: done scenes are skipped.
-Prompts must stay generic: no examples or hints taken from a specific video.
+Prompts must stay generic: no examples or hints taken from a specific video, other than that video's own transcript.
 """
 
 import json
@@ -24,7 +26,10 @@ import numpy as np
 from ovu import language
 from ovu.media import load_frames
 from ovu.paths import out_dir, title
+from ovu.transcribe import load_transcript
 from ovu.vlm import as_text, generate, load_json, load_vlm
+
+MIN_SUMMARY_FIELDS = {"genre", "characters", "objects", "places", "plot"}
 
 W, H = 960, 540
 STORYBOARD_N = 40
@@ -41,9 +46,16 @@ Answer only with JSON in this format:
 
 SUMMARY_PROMPT = """Video title: {title}
 
-The images are a storyboard: single frames spread evenly over the whole video, in chronological order. Summarize the
-video so that its scenes can afterwards be described consistently. Use the title as a hint for topic and characters,
-but describe only what the images support. Write all text values in {language}.
+The images are a storyboard: single frames spread evenly over the whole video, in chronological order.
+
+Spoken transcript, chronological, with speaker labels where known (SPEAKER_00 etc. are just arbitrary voice labels,
+not names; a speaker label may be wrong or missing for very short lines):
+{transcript}
+
+Summarize the video so that its scenes can afterwards be described consistently. Use the title, the transcript and
+the images together: the transcript may name a person who is then visible in the images (e.g. someone addressed or
+introduced by name), or explain what is about to happen before it is visible. Describe only what the images and
+transcript actually support - do not invent anything beyond them. Write all text values in {language}.
 Answer only with JSON in this format:
 {{"genre": "kind/genre of the video in a few words",
  "characters": [{{"name": "short, unambiguous label used for all scenes", "appearance": "how to recognize them"}}],
@@ -85,13 +97,22 @@ def describe(model, processor, images, lang: str) -> str:
                                        {"type": "text", "text": PROMPT.format(language=lang)}])
 
 
-def summarize(model, processor, frames: np.ndarray, title: str, lang: str) -> str:
+def transcript_block(video: Path) -> str:
+    """Spoken transcript as "[start-end s] SPEAKER_00: text" lines, chronological; "(no speech detected)" if empty."""
+    t = load_transcript(video)
+    lines = [f"[{s['start']:.0f}-{s['end']:.0f}s] {s['speaker'] + ': ' if s.get('speaker') else ''}{s['text']}"
+             for s in t["segments"] if s["text"].strip()]
+    return "\n".join(lines) if lines else "(no speech detected)"
+
+
+def summarize(model, processor, frames: np.ndarray, title: str, transcript: str, lang: str) -> str:
     from PIL import Image
 
     idx = np.linspace(0, len(frames) - 1, STORYBOARD_N).round().astype(int)
     board = [Image.fromarray(frames[i]).resize((448, 252)) for i in idx]
+    prompt = SUMMARY_PROMPT.format(title=title, transcript=transcript, language=lang)
     return generate(model, processor, [*({"type": "image", "image": im} for im in board),
-                                       {"type": "text", "text": SUMMARY_PROMPT.format(title=title, language=lang)}],
+                                       {"type": "text", "text": prompt}],
                     max_new_tokens=700)
 
 
@@ -108,20 +129,36 @@ def describe_ctx(model, processor, clip: np.ndarray, summary: str, previous: str
                     video_metadata=[meta], do_sample_frames=False)
 
 
-def run(video: Path, context: bool = False, force: bool = False, vlm=None, lang: str | None = None) -> None:
+def run(video: Path, context: bool = False, force: bool = False, vlm=None, lang: str | None = None,
+       summary_only: bool = False) -> None:
+    """summary_only (context mode only): write/refresh summary.json and return, without touching captions_ctx.json
+    or looping over scenes - for when just "what is this video about" is wanted, not scene-by-scene descriptions."""
     import torch
     from PIL import Image
     from tqdm import tqdm
 
     lang = language.name(language.output_language(video, lang))  # may delete stale texts, so resolve first
     d = out_dir(video)
+
+    if summary_only:
+        spath = d / "summary.json"
+        if not force and spath.exists():
+            print(f"{spath.name}: already done (use --force)")
+            return
+        model, processor = vlm or load_vlm()
+        t0 = time.time()
+        raw = summarize(model, processor, load_frames(video), title(video), transcript_block(video), lang)
+        spath.write_text(raw)
+        if not MIN_SUMMARY_FIELDS <= load_json(raw).keys():
+            print(f"warning: {spath} is not valid/complete JSON (model may have hit a repetition loop or the "
+                  f"token limit) - written anyway for inspection")
+        print(f"summary in {time.time() - t0:.0f}s -> {spath}")
+        return
+
     emb = np.load(d / "embeddings.npz")
     segs = list(zip(emb["shot_starts"].tolist(), emb["shot_ends"].tolist()))
     path = d / ("captions_ctx.json" if context else "captions.json")
     done = {} if force or not path.exists() else {(c["start"], c["end"]): c for c in json.loads(path.read_text())}
-    if not force and all(s in done for s in segs):
-        print(f"{path.name}: all {len(segs)} scenes done (use --force)")
-        return
 
     frames = load_frames(video) if context else load_frames(video, W, H)
     model, processor = vlm or load_vlm()
@@ -130,9 +167,18 @@ def run(video: Path, context: bool = False, force: bool = False, vlm=None, lang:
     if context:
         spath = d / "summary.json"
         if force or not spath.exists():
-            spath.write_text(summarize(model, processor, frames, title(video), lang))
+            raw = summarize(model, processor, frames, title(video), transcript_block(video), lang)
+            spath.write_text(raw)
+            if not MIN_SUMMARY_FIELDS <= load_json(raw).keys():
+                print(f"warning: {spath} is not valid/complete JSON (model may have hit a repetition loop or the "
+                      f"token limit) - written anyway for inspection, but every scene description below will use "
+                      f"this broken text as its context verbatim; delete the file and retry before trusting them")
             print(f"summary in {time.time() - t0:.0f}s -> {spath}")
         summary = spath.read_text().strip()
+
+    if not force and all(s in done for s in segs):
+        print(f"{path.name}: all {len(segs)} scenes done (use --force)")
+        return
     previous = ""
     for s, e in tqdm(segs, desc=path.stem):
         if (s, e) not in done:

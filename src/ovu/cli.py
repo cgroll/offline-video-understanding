@@ -55,13 +55,18 @@ def cmd_process(a) -> None:
 
         language.output_language(video, a.language)  # a changed language deletes stale texts before anything runs
         vlm = load_vlm()
-        caption.run(video, context=False, force=a.force, vlm=vlm)
-        caption.run(video, context=True, force=a.force, vlm=vlm)
-        chapters.run(video, a.force, vlm=vlm)
+        if a.summary_only:
+            # just the global summary: skip plain captions, per-scene context captions, chapters and the report -
+            # they all need (or are built from) per-scene descriptions, which this mode never computes
+            caption.run(video, context=True, force=a.force, vlm=vlm, summary_only=True)
+        else:
+            caption.run(video, context=False, force=a.force, vlm=vlm)
+            caption.run(video, context=True, force=a.force, vlm=vlm)
+            chapters.run(video, a.force, vlm=vlm)
         del vlm
     # without --vlm only variants whose inputs exist are computed, so no VLM-based variant is added
     embed.run(video, None, a.force)
-    if a.vlm:
+    if a.vlm and not a.summary_only:
         report.run(video, a.force)
     print(f"done: {video.parent.name}  ->  ovu app {video.parent.name}")
 
@@ -82,6 +87,9 @@ def main() -> None:
     s.add_argument("project")
     s.add_argument("--vlm", action="store_true",
                    help="also run the vision-language model: scene descriptions, chapters, PDF report (slow)")
+    s.add_argument("--summary-only", action="store_true",
+                   help="with --vlm: only the global summary (genre/characters/objects/places/plot), no per-scene "
+                        "descriptions, chapters or report - much faster, for a quick \"what is this video about\"")
     s.add_argument("--language", help=LANG_HELP)
     s.add_argument("--force", action="store_true")
 
@@ -97,6 +105,7 @@ def main() -> None:
     s = sub.add_parser("caption", help="VLM scene descriptions (needs video_shots)")
     s.add_argument("project")
     s.add_argument("--context", action="store_true", help="hierarchical: global summary + previous scene")
+    s.add_argument("--summary-only", action="store_true", help="only (re)write summary.json, no per-scene captions")
     s.add_argument("--language", help=LANG_HELP)
     s.add_argument("--force", action="store_true")
 
@@ -140,7 +149,7 @@ def main() -> None:
             embed.run(video, a.variants or None, a.force)
         elif a.cmd == "caption":
             from ovu import caption
-            caption.run(video, a.context, a.force, lang=a.language)
+            caption.run(video, a.context, a.force, lang=a.language, summary_only=a.summary_only)
         elif a.cmd == "chapters":
             from ovu import chapters
             chapters.run(video, a.force, lang=a.language)
