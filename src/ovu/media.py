@@ -23,6 +23,12 @@ def load_audio(video: Path) -> np.ndarray:
     return np.frombuffer(bytearray(raw), np.float32)
 
 
+def extract_wav(video: Path, out_path: Path) -> None:
+    """Mono WAV at 16 kHz, written to out_path (for tools that need a file path, e.g. diarization)."""
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(video), "-ac", "1", "-ar", str(SAMPLE_RATE),
+                    "-f", "wav", str(out_path)], capture_output=True, check=True)
+
+
 def load_frames(video: Path, w: int = FRAME_W, h: int = FRAME_H) -> np.ndarray:
     """RGB frames sampled at 1 fps, shape (seconds, h, w, 3); frame i shows second i."""
     raw = subprocess.run(["ffmpeg", "-v", "error", "-i", str(video), "-vf", f"fps=1,scale={w}:{h}",

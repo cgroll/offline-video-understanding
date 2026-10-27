@@ -303,7 +303,7 @@ function renderSegs() {
       ? `<b>${highlight(s.title)}</b><small>${highlight(s.summary)}</small>`
       : scenes
       ? `<span class="badge">${escapeHtml(s.shot_type || "scene")}</span>${highlight(s.description)}${s.on_screen_text ? `<small>On-screen text: “${highlight(s.on_screen_text)}”</small>` : ""}`
-      : highlight(s.text);
+      : `${s.speaker ? `<span class="badge">${escapeHtml(s.speaker)}</span>` : ""}${highlight(s.text)}`;
     d.innerHTML = `<span class="bar" style="background:${barColor}"></span><span class="t mono">${fmt(s.start)}</span><span class="x">${body}</span>`;
     d.onclick = () => seek(s.start);
     box.append(d);
